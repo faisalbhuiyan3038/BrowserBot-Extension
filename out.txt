@@ -1,0 +1,10 @@
+﻿entrypoints/popup/App.tsx(49,36): error TS2345: Argument of type 'number[]' is not assignable to parameter of type 'number | [number, ...number[]]'.
+  Type 'number[]' is not assignable to type '[number, ...number[]]'.
+    Source provides no match for required element at position 0 in target.
+entrypoints/popup/App.tsx(59,54): error TS2322: Type 'number[]' is not assignable to type 'number | [number, ...number[]] | undefined'.
+  Type 'number[]' is not assignable to type '[number, ...number[]]'.
+    Source provides no match for required element at position 0 in target.
+entrypoints/popup/App.tsx(67,42): error TS2345: Argument of type 'Promise<number> & void' is not assignable to parameter of type 'number'.
+entrypoints/popup/App.tsx(69,38): error TS2503: Cannot find namespace 'chrome'.
+utils/ai.ts(11,10): error TS2503: Cannot find namespace 'chrome'.
+utils/storage.ts(1,25): error TS2307: Cannot find module 'wxt/storage' or its corresponding type declarations.

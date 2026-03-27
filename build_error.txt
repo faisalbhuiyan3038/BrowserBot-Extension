@@ -1,0 +1,56 @@
+
+[90mWXT[39m [90m[1m0.20.20[22m[39m
+[36mℹ[39m Building [36mchrome-mv3[39m for [36mproduction[39m with [32mVite 8.0.3[39m
+[33m-[39m Preparing...
+[31m✗[39m Build failed in 282ms
+[1G
+[41m[30m ERROR [39m[49m [31mBuild failed with 1 error:
+
+[31m[rolldown:vite-resolve] Error:[0m plugin [36mrolldown:vite-resolve[39m threw an error
+
+Caused by:
+    "./storage" is not exported under the conditions ["module", "browser", "production", "import"] from package E:/Programming/BrowserWizard\node_modules\wxt (see exports field in E:/Programming/BrowserWizard\node_modules\wxt\package.json)
+[39m
+
+    [90mat [39maggregateBindingErrorsIntoJsError ([36m/E:/Programming/BrowserWizard/node_modules/rolldown/dist/shared/error-BLhcSyeg.mjs:48:18[39m)
+    [90mat [39munwrapBindingResult ([36m/E:/Programming/BrowserWizard/node_modules/rolldown/dist/shared/error-BLhcSyeg.mjs:18:128[39m)
+    [90mat [39mRolldownBuild.#build ([36m/E:/Programming/BrowserWizard/node_modules/rolldown/dist/shared/rolldown-build-CPrIX9V6.mjs:3313:34[39m)
+    [90mat [39mbuildEnvironment ([36m/E:/Programming/BrowserWizard/node_modules/vite/dist/node/chunks/node.js:32849:64[39m)
+    [90mat [39mObject.build ([36m/E:/Programming/BrowserWizard/node_modules/vite/dist/node/chunks/node.js:33271:19[39m)
+    [90mat [39mObject.build ([36m/E:/Programming/BrowserWizard/node_modules/wxt/dist/core/builders/vite/index.mjs:202:72[39m)
+    [90mat [39mbuildEntrypoints ([36m/E:/Programming/BrowserWizard/node_modules/wxt/dist/core/utils/building/build-entrypoints.mjs:16:15[39m)
+    [90mat [39mrebuild ([36m/E:/Programming/BrowserWizard/node_modules/wxt/dist/core/utils/building/rebuild.mjs:34:20[39m)
+    [90mat [39minternalBuild ([36m/E:/Programming/BrowserWizard/node_modules/wxt/dist/core/utils/building/internal-build.mjs:46:31[39m)
+    [90mat [39mbuild ([36m/E:/Programming/BrowserWizard/node_modules/wxt/dist/core/build.mjs:21:9[39m)
+
+[31m✖[39m Command failed after 1.093 s
+
+[41m[30m ERROR [39m[49m Failed to build options, popup
+
+    [90mat [39mbuildEntrypoints ([36m/E:/Programming/BrowserWizard/node_modules/wxt/dist/core/utils/building/build-entrypoints.mjs:21:10[39m)
+    [90mat [39mrebuild ([36m/E:/Programming/BrowserWizard/node_modules/wxt/dist/core/utils/building/rebuild.mjs:34:20[39m)
+    [90mat [39minternalBuild ([36m/E:/Programming/BrowserWizard/node_modules/wxt/dist/core/utils/building/internal-build.mjs:46:31[39m)
+    [90mat [39mbuild ([36m/E:/Programming/BrowserWizard/node_modules/wxt/dist/core/build.mjs:21:9[39m)
+    [90mat [39m/E:/Programming/BrowserWizard/node_modules/wxt/dist/cli/commands.mjs:31:2
+    [90mat [39mCAC.<anonymous> ([36m/E:/Programming/BrowserWizard/node_modules/wxt/dist/cli/cli-utils.mjs:22:10[39m)
+    [90mat [39m/E:/Programming/BrowserWizard/node_modules/wxt/dist/cli/index.mjs:11:1
+
+  [cause]: [31mBuild failed with 1 error:
+
+[31m[rolldown:vite-resolve] Error:[0m plugin [36mrolldown:vite-resolve[39m threw an error
+
+Caused by:
+    "./storage" is not exported under the conditions ["module", "browser", "production", "import"] from package E:/Programming/BrowserWizard\node_modules\wxt (see exports field in E:/Programming/BrowserWizard\node_modules\wxt\package.json)
+[39m
+
+      [90mat [39maggregateBindingErrorsIntoJsError ([36m/E:/Programming/BrowserWizard/node_modules/rolldown/dist/shared/error-BLhcSyeg.mjs:48:18[39m)
+      [90mat [39munwrapBindingResult ([36m/E:/Programming/BrowserWizard/node_modules/rolldown/dist/shared/error-BLhcSyeg.mjs:18:128[39m)
+      [90mat [39mRolldownBuild.#build ([36m/E:/Programming/BrowserWizard/node_modules/rolldown/dist/shared/rolldown-build-CPrIX9V6.mjs:3313:34[39m)
+      [90mat [39mbuildEnvironment ([36m/E:/Programming/BrowserWizard/node_modules/vite/dist/node/chunks/node.js:32849:64[39m)
+      [90mat [39mObject.build ([36m/E:/Programming/BrowserWizard/node_modules/vite/dist/node/chunks/node.js:33271:19[39m)
+      [90mat [39mObject.build ([36m/E:/Programming/BrowserWizard/node_modules/wxt/dist/core/builders/vite/index.mjs:202:72[39m)
+      [90mat [39mbuildEntrypoints ([36m/E:/Programming/BrowserWizard/node_modules/wxt/dist/core/utils/building/build-entrypoints.mjs:16:15[39m)
+      [90mat [39mrebuild ([36m/E:/Programming/BrowserWizard/node_modules/wxt/dist/core/utils/building/rebuild.mjs:34:20[39m)
+      [90mat [39minternalBuild ([36m/E:/Programming/BrowserWizard/node_modules/wxt/dist/core/utils/building/internal-build.mjs:46:31[39m)
+      [90mat [39mbuild ([36m/E:/Programming/BrowserWizard/node_modules/wxt/dist/core/build.mjs:21:9[39m)
+
