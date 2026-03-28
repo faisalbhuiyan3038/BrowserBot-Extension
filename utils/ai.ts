@@ -6,16 +6,55 @@ export type TabInfo = {
   title: string;
 };
 
+export type ExistingGroup = {
+  title: string;
+  color: string;
+  tabIds: number[];
+};
+
 export type GroupCategory = {
   name: string;
   color: string;
   tabIds: number[];
 };
 
-export async function groupTabsWithAI(tabs: TabInfo[]): Promise<GroupCategory[]> {
+/**
+ * Interpolate prompt template variables with actual tab data.
+ */
+function interpolatePrompt(
+  template: string,
+  tabs: TabInfo[],
+  existingGroups: ExistingGroup[]
+): string {
+  const ungroupedIds = tabs
+    .filter(t => !existingGroups.some(g => g.tabIds.includes(t.id)))
+    .map(t => t.id);
+
+  const replacements: Record<string, string> = {
+    '{tabList}': JSON.stringify(tabs.map(t => ({ id: t.id, title: t.title, url: t.url })), null, 2),
+    '{tabCount}': String(tabs.length),
+    '{tabIds}': tabs.map(t => t.id).join(', '),
+    '{tabTitles}': tabs.map(t => t.title).join('\n'),
+    '{tabUrls}': tabs.map(t => t.url).join('\n'),
+    '{tabTitleUrlPairs}': tabs.map(t => `${t.title} — ${t.url}`).join('\n'),
+    '{existingGroups}': JSON.stringify(existingGroups, null, 2),
+    '{ungroupedTabIds}': ungroupedIds.join(', '),
+  };
+
+  let result = template;
+  for (const [key, value] of Object.entries(replacements)) {
+    result = result.replaceAll(key, value);
+  }
+  return result;
+}
+
+export async function groupTabsWithAI(
+  tabs: TabInfo[],
+  existingGroups: ExistingGroup[] = []
+): Promise<GroupCategory[]> {
   const state = await AppStorage.get();
-  const tabsContext = JSON.stringify(tabs.map(t => ({ id: t.id, title: t.title, url: t.url })));
-  const prompt = `${state.systemPrompt}\n\nTabs to group:\n${tabsContext}`;
+  const promptTemplate = await AppStorage.getActiveTabGroupPrompt();
+  const prompt = interpolatePrompt(promptTemplate.prompt, tabs, existingGroups);
 
   let jsonResponse = '';
 
@@ -31,22 +70,19 @@ export async function groupTabsWithAI(tabs: TabInfo[]): Promise<GroupCategory[]>
 
   const parsed = parseJSON(jsonResponse);
   if (!parsed || !parsed.categories) {
-    throw new Error(`AI returned invalid format. Raw response:\n${jsonResponse.substring(0, 200)}`);
+    throw new Error(`AI returned invalid format. Raw response:\n${jsonResponse.substring(0, 300)}`);
   }
   return parsed.categories;
 }
 
 function parseJSON(text: string): any {
-  // Direct parse
   try { return JSON.parse(text); } catch (_) {}
 
-  // Extract from markdown code block
   const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   if (match?.[1]) {
     try { return JSON.parse(match[1]); } catch (_) {}
   }
 
-  // Find first { ... last }
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start !== -1 && end > start) {
@@ -102,7 +138,6 @@ async function generateWithOllama(prompt: string, state: StorageState): Promise<
 // ─── OpenAI Compatible ──────────────────────────────────────
 
 async function generateWithOpenAI(prompt: string, provider: OpenAIProvider): Promise<string> {
-  // Smart URL resolution: don't double /chat/completions
   let url = provider.endpoint.replace(/\/+$/, '');
   if (!url.endsWith('/chat/completions')) {
     url += '/chat/completions';

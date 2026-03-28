@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { groupTabsWithAI, TabInfo } from '../../utils/ai';
+import { groupTabsWithAI, TabInfo, ExistingGroup } from '../../utils/ai';
 
 type View = 'home' | 'group-tabs';
 
@@ -36,8 +36,22 @@ export default function App() {
         return;
       }
 
+      // Gather existing tab groups for context
+      let existingGroups: ExistingGroup[] = [];
+      try {
+        const groups = await browser.tabGroups.query({ windowId: (await browser.windows.getCurrent()).id! });
+        for (const g of groups) {
+          const groupTabs = tabs.filter(t => (t as any).groupId === g.id);
+          existingGroups.push({
+            title: g.title || '',
+            color: g.color || 'grey',
+            tabIds: groupTabs.map(t => t.id!).filter(Boolean)
+          });
+        }
+      } catch (_) {}
+
       setStatus(`Found ${tabsInfo.length} tabs. Asking AI…`);
-      const categories = await groupTabsWithAI(tabsInfo);
+      const categories = await groupTabsWithAI(tabsInfo, existingGroups);
       setStatus('Applying groups…');
 
       if (!keepExisting) {
