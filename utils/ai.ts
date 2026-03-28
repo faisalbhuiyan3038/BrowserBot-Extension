@@ -1,4 +1,4 @@
-import { AppStorage, StorageState } from './storage';
+import { AppStorage, StorageState, OpenAIProvider } from './storage';
 
 export type TabInfo = {
   id: number;
@@ -17,101 +17,123 @@ export async function groupTabsWithAI(tabs: TabInfo[]): Promise<GroupCategory[]>
   const tabsContext = JSON.stringify(tabs.map(t => ({ id: t.id, title: t.title, url: t.url })));
   const prompt = `${state.systemPrompt}\n\nTabs to group:\n${tabsContext}`;
 
-  try {
-    let jsonResponse = '';
-    
-    if (state.provider === 'chrome_ai') {
-      jsonResponse = await generateWithChromeAI(prompt);
-    } else if (state.provider === 'ollama') {
-      jsonResponse = await generateWithOllama(prompt, state);
-    } else if (state.provider === 'openai') {
-      jsonResponse = await generateWithOpenAI(prompt, state);
-    }
+  let jsonResponse = '';
 
-    const parsed = executeParseJSON(jsonResponse);
-    if (!parsed || !parsed.categories) {
-      throw new Error("Invalid format returned by AI.");
-    }
-    return parsed.categories;
-  } catch (err) {
-    console.error("AI Generation error:", err);
-    throw err;
+  if (state.activeProvider === 'chrome_ai') {
+    jsonResponse = await generateWithChromeAI(prompt);
+  } else if (state.activeProvider === 'ollama') {
+    jsonResponse = await generateWithOllama(prompt, state);
+  } else if (state.activeProvider === 'openai') {
+    const provider = state.openaiProviders.find(p => p.id === state.activeOpenAIProviderId);
+    if (!provider) throw new Error('No active OpenAI provider configured. Please check Settings.');
+    jsonResponse = await generateWithOpenAI(prompt, provider);
   }
+
+  const parsed = parseJSON(jsonResponse);
+  if (!parsed || !parsed.categories) {
+    throw new Error(`AI returned invalid format. Raw response:\n${jsonResponse.substring(0, 200)}`);
+  }
+  return parsed.categories;
 }
 
-function executeParseJSON(text: string): any {
-  // Try to parse raw
-  try { return JSON.parse(text); } catch (e) {}
-  
-  // Try to extract JSON from markdown blocks
+function parseJSON(text: string): any {
+  // Direct parse
+  try { return JSON.parse(text); } catch (_) {}
+
+  // Extract from markdown code block
   const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (match && match[1]) {
-    try { return JSON.parse(match[1]); } catch (e) {}
+  if (match?.[1]) {
+    try { return JSON.parse(match[1]); } catch (_) {}
   }
 
-  // Fallback: try to find the first '{' and last '}'
+  // Find first { ... last }
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
-  if (start !== -1 && end !== -1) {
-    try { return JSON.parse(text.substring(start, end + 1)); } catch (e) {}
+  if (start !== -1 && end > start) {
+    try { return JSON.parse(text.substring(start, end + 1)); } catch (_) {}
   }
   return null;
 }
 
-// ----------------------------------------------------
-// Providers
-// ----------------------------------------------------
+// ─── Chrome AI (Prompt API) ──────────────────────────────────
 
 async function generateWithChromeAI(prompt: string): Promise<string> {
   const ai = (globalThis as any).ai;
-  if (!ai || !ai.languageModel) {
-    throw new Error("Chrome AI Prompt API is not available.");
+  if (!ai?.languageModel) {
+    throw new Error('Chrome AI Prompt API is not available. Enable it in chrome://flags.');
   }
-  
+
   const { available } = await ai.languageModel.capabilities();
-  if (available !== "readily") {
-    throw new Error("Chrome AI model not readily available.");
+  if (available !== 'readily') {
+    throw new Error('Chrome AI model is not readily available.');
   }
-  
+
   const session = await ai.languageModel.create();
-  const result = await session.prompt(prompt);
-  session.destroy();
-  return result;
+  try {
+    return await session.prompt(prompt);
+  } finally {
+    session.destroy();
+  }
 }
 
+// ─── Ollama ──────────────────────────────────────────────────
+
 async function generateWithOllama(prompt: string, state: StorageState): Promise<string> {
-  const res = await fetch(`${state.ollamaEndpoint}/api/generate`, {
+  const endpoint = state.ollamaEndpoint.replace(/\/+$/, '');
+  const res = await fetch(`${endpoint}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: state.ollamaModel,
-      prompt: prompt,
+      prompt,
       stream: false,
       format: 'json'
     })
   });
-  
-  if (!res.ok) throw new Error(`Ollama error: ${res.statusText}`);
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Ollama error ${res.status}: ${body || res.statusText}`);
+  }
   const data = await res.json();
   return data.response;
 }
 
-async function generateWithOpenAI(prompt: string, state: StorageState): Promise<string> {
-  const url = state.openaiEndpoint.endsWith('/') ? `${state.openaiEndpoint}chat/completions` : `${state.openaiEndpoint}/chat/completions`;
+// ─── OpenAI Compatible ──────────────────────────────────────
+
+async function generateWithOpenAI(prompt: string, provider: OpenAIProvider): Promise<string> {
+  // Smart URL resolution: don't double /chat/completions
+  let url = provider.endpoint.replace(/\/+$/, '');
+  if (!url.endsWith('/chat/completions')) {
+    url += '/chat/completions';
+  }
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+  if (provider.apiKey) {
+    headers['Authorization'] = `Bearer ${provider.apiKey}`;
+  }
+
+  const body: Record<string, any> = {
+    model: provider.model,
+    messages: [{ role: 'user', content: prompt }]
+  };
+
+  if (provider.reasoning) {
+    body.reasoning = { enabled: true };
+  }
+
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${state.openaiKey}`
-    },
-    body: JSON.stringify({
-      model: state.openaiModel,
-      messages: [{ role: 'user', content: prompt }],
-      response_format: { type: "json_object" }
-    })
+    headers,
+    body: JSON.stringify(body)
   });
-  
-  if (!res.ok) throw new Error(`OpenAI error: ${res.statusText}`);
+
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '');
+    throw new Error(`${provider.name} error ${res.status}: ${errBody || res.statusText}`);
+  }
   const data = await res.json();
-  return data.choices[0].message.content;
+  return data.choices?.[0]?.message?.content ?? '';
 }
