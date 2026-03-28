@@ -7,6 +7,7 @@ export type TabInfo = {
 };
 
 export type ExistingGroup = {
+  id?: number;
   title: string;
   color: string;
   tabIds: number[];
@@ -48,24 +49,72 @@ function interpolatePrompt(
   return result;
 }
 
+// The output format is always appended programmatically — users
+// don't need to include it in their custom prompts.
+const OUTPUT_FORMAT_INSTRUCTION = `
+
+Return a JSON object with the following structure:
+{
+  "categories": [
+    {
+      "name": "Category Name",
+      "color": "blue",
+      "tabIds": [1, 2, 3]
+    }
+  ]
+}
+
+"color" must be one of: grey, blue, red, yellow, green, pink, purple, cyan, orange.
+"tabIds" must contain tab IDs from the provided list.
+Only return valid JSON, no markdown blocks or conversational text.`;
+
+export interface GroupTabsOptions {
+  promptId?: string;           // override the active prompt
+  customInstructions?: string; // extra instructions appended to the prompt
+  keepExistingGroups?: boolean; // programmatic instruction to preserve existing groups
+}
+
 export async function groupTabsWithAI(
   tabs: TabInfo[],
-  existingGroups: ExistingGroup[] = []
+  existingGroups: ExistingGroup[] = [],
+  options: GroupTabsOptions = {}
 ): Promise<GroupCategory[]> {
   const state = await AppStorage.get();
-  const promptTemplate = await AppStorage.getActiveTabGroupPrompt();
-  const prompt = interpolatePrompt(promptTemplate.prompt, tabs, existingGroups);
+
+  // Resolve which prompt to use
+  let promptTemplate: SystemPrompt;
+  if (options.promptId) {
+    promptTemplate = state.tabGroupPrompts.find(p => p.id === options.promptId)
+      ?? await AppStorage.getActiveTabGroupPrompt();
+  } else {
+    promptTemplate = await AppStorage.getActiveTabGroupPrompt();
+  }
+
+  let templateText = promptTemplate.prompt;
+
+  if (options.keepExistingGroups && existingGroups.length > 0) {
+    templateText += `\n\nIMPORTANT: The user wants to keep their existing tab groups intact.\nHere is the data for existing groups:\n{existingGroups}\n\nIf a tab currently belongs to an existing group, you MUST keep it in that group by assigning it the EXACT same "name" and "color". You may also add ungrouped tabs to these existing groups. Do not rename existing groups or change their colors.`;
+  }
+
+  // Build the full prompt: template → custom instructions → output format
+  let fullPrompt = interpolatePrompt(templateText, tabs, existingGroups);
+
+  if (options.customInstructions?.trim()) {
+    fullPrompt += '\n\nAdditional instructions:\n' + options.customInstructions.trim();
+  }
+
+  fullPrompt += OUTPUT_FORMAT_INSTRUCTION;
 
   let jsonResponse = '';
 
   if (state.activeProvider === 'chrome_ai') {
-    jsonResponse = await generateWithChromeAI(prompt);
+    jsonResponse = await generateWithChromeAI(fullPrompt);
   } else if (state.activeProvider === 'ollama') {
-    jsonResponse = await generateWithOllama(prompt, state);
+    jsonResponse = await generateWithOllama(fullPrompt, state);
   } else if (state.activeProvider === 'openai') {
     const provider = state.openaiProviders.find(p => p.id === state.activeOpenAIProviderId);
     if (!provider) throw new Error('No active OpenAI provider configured. Please check Settings.');
-    jsonResponse = await generateWithOpenAI(prompt, provider);
+    jsonResponse = await generateWithOpenAI(fullPrompt, provider);
   }
 
   const parsed = parseJSON(jsonResponse);

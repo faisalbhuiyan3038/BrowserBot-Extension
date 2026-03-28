@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { groupTabsWithAI, TabInfo, ExistingGroup } from '../../utils/ai';
+import { AppStorage, SystemPrompt } from '../../utils/storage';
 
 type View = 'home' | 'group-tabs';
 
@@ -9,10 +10,20 @@ export default function App() {
   const [status, setStatus] = useState('');
   const [tabCount, setTabCount] = useState(0);
   const [keepExisting, setKeepExisting] = useState(false);
+  const [customInstructions, setCustomInstructions] = useState('');
+
+  // Prompt selection
+  const [prompts, setPrompts] = useState<SystemPrompt[]>([]);
+  const [selectedPromptId, setSelectedPromptId] = useState('');
 
   useEffect(() => {
     browser.tabs.query({ currentWindow: true }).then(tabs => {
       setTabCount(tabs.length);
+    });
+    // Load available prompts
+    AppStorage.get().then(state => {
+      setPrompts(state.tabGroupPrompts);
+      setSelectedPromptId(state.activeTabGroupPromptId);
     });
   }, []);
 
@@ -43,6 +54,7 @@ export default function App() {
         for (const g of groups) {
           const groupTabs = tabs.filter(t => (t as any).groupId === g.id);
           existingGroups.push({
+            id: g.id,
             title: g.title || '',
             color: g.color || 'grey',
             tabIds: groupTabs.map(t => t.id!).filter(Boolean)
@@ -51,7 +63,11 @@ export default function App() {
       } catch (_) {}
 
       setStatus(`Found ${tabsInfo.length} tabs. Asking AI…`);
-      const categories = await groupTabsWithAI(tabsInfo, existingGroups);
+      const categories = await groupTabsWithAI(tabsInfo, existingGroups, {
+        promptId: selectedPromptId || undefined,
+        customInstructions: customInstructions || undefined,
+        keepExistingGroups: keepExisting,
+      });
       setStatus('Applying groups…');
 
       if (!keepExisting) {
@@ -65,9 +81,22 @@ export default function App() {
         const validIds = (cat.tabIds || []).filter(id => tabsInfo.some(t => t.id === id));
         if (validIds.length === 0) continue;
 
-        const groupId = (await browser.tabs.group({ tabIds: validIds as any })) as unknown as number;
+        // Find existing match by exact name if keepExisting is true
+        const existingMatch = keepExisting 
+          ? existingGroups.find(g => g.title === cat.name) 
+          : undefined;
+
+        let groupId: number;
+        if (existingMatch && existingMatch.id !== undefined) {
+          // Add to existing group
+          groupId = (await browser.tabs.group({ tabIds: validIds as any, groupId: existingMatch.id })) as unknown as number;
+        } else {
+          // Create new group
+          groupId = (await browser.tabs.group({ tabIds: validIds as any })) as unknown as number;
+        }
+
         const validColors = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
-        const color = validColors.includes(cat.color) ? cat.color : 'grey';
+        const color = validColors.includes(cat.color) ? cat.color : (existingMatch?.color || 'grey');
 
         await browser.tabGroups.update(groupId, { title: cat.name, color: color as any });
       }
@@ -150,10 +179,36 @@ export default function App() {
           <div className="glass-card">
             <h3 className="subview-title">Auto Group Tabs</h3>
 
+            {/* Prompt selector */}
+            <div className="field-group">
+              <label className="field-label-popup">Prompt</label>
+              <select
+                className="popup-select"
+                value={selectedPromptId}
+                onChange={e => setSelectedPromptId(e.target.value)}
+              >
+                {prompts.map(p => (
+                  <option key={p.id} value={p.id}>{p.name || 'Untitled'}</option>
+                ))}
+              </select>
+            </div>
+
             <label className="toggle-row">
               <input type="checkbox" checked={keepExisting} onChange={e => setKeepExisting(e.target.checked)} />
               <span className="toggle-label">Keep existing tab groups</span>
             </label>
+
+            {/* Custom instructions */}
+            <div className="field-group">
+              <label className="field-label-popup">Custom instructions <span className="optional-tag">optional</span></label>
+              <textarea
+                className="popup-textarea"
+                rows={3}
+                value={customInstructions}
+                onChange={e => setCustomInstructions(e.target.value)}
+                placeholder="e.g. Group by project, ignore social media tabs…"
+              />
+            </div>
 
             {status && <p className={`status-text ${status.startsWith('Error') ? 'error' : status.startsWith('✓') ? 'success' : ''}`}>{status}</p>}
 

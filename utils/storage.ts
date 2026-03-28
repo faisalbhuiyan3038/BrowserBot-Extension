@@ -49,21 +49,54 @@ Here are the open tabs:
 
 {tabList}
 
-Group these {tabCount} tabs into logical categories.
-
-Return a JSON object with the following structure:
-{
-  "categories": [
-    {
-      "name": "Category Name (e.g. Work, News, Social)",
-      "color": "blue", // must be one of: grey, blue, red, yellow, green, pink, purple, cyan, orange
-      "tabIds": [1, 2, 3] // array of tab IDs from the list above
-    }
-  ]
-}
-
-Only return valid JSON, no markdown blocks or conversational text.`
+Group these {tabCount} tabs into logical categories.`
 };
+
+export const BUILTIN_SMART_PROMPT: SystemPrompt = {
+  id: 'builtin-smart',
+  name: 'Smart Grouper',
+  prompt: `As an AI assistant, analyze and organize these {tabCount} browser tabs into meaningful groups. Here are open tabs: 
+{tabList}
+
+Follow these specific guidelines:
+1. Create intuitive groups that reflect how users naturally organize their work and activities
+2. Use short, clear category names (1-2 words) that instantly convey the purpose
+3. Consider tab relationships based on:
+   - Common domains or platforms
+   - Related topics or projects
+   - Similar purposes (research, shopping, etc.)
+   - Temporal context (current tasks vs reference material)
+4. Rules:
+- Create 3-8 groups based on tab count and content similarity
+- not to make too many groups
+- Use short, clear category names (1-2 words, try just 1 word)
+- Keep groups focused and cohesive
+- Each tab must be assigned to exactly one group
+- Group related items even if from different domains`
+};
+
+export const BUILTIN_CONTEXT_PROMPT: SystemPrompt = {
+  id: 'builtin-context',
+  name: 'Context-Aware',
+  prompt: `Analyze the provided list of tab data and assign a concise category (1-2 words, Title Case) for EACH tab.
+
+Existing Categories:
+{existingGroups}
+---
+Instructions for Assignment:
+1.  **Prioritize Existing:** For each tab below, determine if it clearly belongs to one of the 'Existing Categories'. Base this primarily on the URL/Domain, then Title/Description. If it fits, you MUST use the EXACT category name provided in the 'Existing Categories' list. DO NOT create a minor variation (e.g., if 'Project Docs' exists, use that, don't create 'Project Documentation').
+2.  **Assign New Category (If Necessary):** Only if a tab DOES NOT fit an existing category, assign the best NEW concise category (1-2 words, Title Case).
+4.  **Format:** 1-2 words, Title Case.
+---
+Input Tab Data:
+{tabList}`
+};
+
+export const ALL_BUILTIN_PROMPTS: SystemPrompt[] = [
+  DEFAULT_TAB_GROUP_PROMPT,
+  BUILTIN_SMART_PROMPT,
+  BUILTIN_CONTEXT_PROMPT
+];
 
 export const defaultState: StorageState = {
   activeProvider: 'openai',
@@ -80,7 +113,7 @@ export const defaultState: StorageState = {
       reasoning: false
     }
   ],
-  tabGroupPrompts: [{ ...DEFAULT_TAB_GROUP_PROMPT }],
+  tabGroupPrompts: ALL_BUILTIN_PROMPTS.map(p => ({ ...p })),
   activeTabGroupPromptId: 'builtin-default'
 };
 

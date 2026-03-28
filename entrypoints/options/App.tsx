@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
-  AppStorage, StorageState, defaultState, DEFAULT_TAB_GROUP_PROMPT,
+  AppStorage, StorageState, defaultState,
   AIProviderType, OpenAIProvider, SystemPrompt, PROMPT_VARIABLES, generateId
 } from '../../utils/storage';
 
@@ -14,6 +14,7 @@ export default function App() {
   const [editingProvider, setEditingProvider] = useState<OpenAIProvider | null>(null);
   const [editingPrompt, setEditingPrompt] = useState<SystemPrompt | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     AppStorage.get().then(data => {
@@ -208,8 +209,8 @@ export default function App() {
 
                 {/* Provider Edit Modal */}
                 {editingProvider && (
-                  <div className="modal-overlay" onClick={() => setEditingProvider(null)}>
-                    <div className="modal" onClick={e => e.stopPropagation()}>
+                  <div className="modal-overlay" onMouseDown={() => setEditingProvider(null)}>
+                    <div className="modal" onMouseDown={e => e.stopPropagation()}>
                       <h3>{state.openaiProviders.some(x => x.id === editingProvider.id) ? 'Edit' : 'Add'} Provider</h3>
                       <label className="field-label">Display Name</label>
                       <input type="text" value={editingProvider.name} onChange={e => setEditingProvider({ ...editingProvider, name: e.target.value })} placeholder="e.g. OpenAI, Groq, Together…" />
@@ -286,29 +287,44 @@ export default function App() {
 
             {/* Prompt Edit Modal */}
             {editingPrompt && (
-              <div className="modal-overlay" onClick={() => setEditingPrompt(null)}>
-                <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
+              <div className="modal-overlay" onMouseDown={() => setEditingPrompt(null)}>
+                <div className="modal modal-wide" onMouseDown={e => e.stopPropagation()}>
                   <h3>{state.tabGroupPrompts.some(x => x.id === editingPrompt.id) ? 'Edit' : 'Add'} System Prompt</h3>
                   <label className="field-label">Prompt Name</label>
                   <input type="text" value={editingPrompt.name} onChange={e => setEditingPrompt({ ...editingPrompt, name: e.target.value })} placeholder="e.g. Default, Minimal, Work-focused…" />
                   <label className="field-label">Prompt Template</label>
                   <textarea
+                    ref={promptTextareaRef}
                     rows={16}
                     value={editingPrompt.prompt}
                     onChange={e => setEditingPrompt({ ...editingPrompt, prompt: e.target.value })}
                     placeholder="Use variables like {tabList}, {tabCount}, etc."
                   />
                   <div className="var-hint-row">
-                    {PROMPT_VARIABLES.slice(0, 4).map(v => (
+                    {PROMPT_VARIABLES.map(v => (
                       <button
                         key={v.key}
                         className="var-chip"
                         type="button"
-                        onClick={() => setEditingPrompt({ ...editingPrompt, prompt: editingPrompt.prompt + v.key })}
+                        onClick={() => {
+                          const ta = promptTextareaRef.current;
+                          const text = editingPrompt.prompt;
+                          if (ta) {
+                            const pos = ta.selectionStart ?? text.length;
+                            const newText = text.slice(0, pos) + v.key + text.slice(pos);
+                            setEditingPrompt({ ...editingPrompt, prompt: newText });
+                            // Restore cursor after React re-render
+                            requestAnimationFrame(() => {
+                              ta.focus();
+                              ta.selectionStart = ta.selectionEnd = pos + v.key.length;
+                            });
+                          } else {
+                            setEditingPrompt({ ...editingPrompt, prompt: text + v.key });
+                          }
+                        }}
                         title={v.description}
                       >{v.key}</button>
                     ))}
-                    <span className="var-hint-more">+ {PROMPT_VARIABLES.length - 4} more in reference</span>
                   </div>
                   <div className="modal-footer">
                     <button className="btn-secondary" onClick={() => setEditingPrompt(null)}>Cancel</button>
