@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   AppStorage, StorageState, defaultState,
-  AIProviderType, OpenAIProvider, SystemPrompt, PROMPT_VARIABLES, generateId
+  AIProviderType, OpenAIProvider, SystemPrompt, PROMPT_VARIABLES, ASK_PAGE_PROMPT_VARIABLES, generateId
 } from '../../utils/storage';
 
 type Page = 'providers' | 'tab-grouping' | 'ask-page';
@@ -13,8 +13,10 @@ export default function App() {
   const [page, setPage] = useState<Page>('providers');
   const [editingProvider, setEditingProvider] = useState<OpenAIProvider | null>(null);
   const [editingPrompt, setEditingPrompt] = useState<SystemPrompt | null>(null);
+  const [editingAskPrompt, setEditingAskPrompt] = useState<SystemPrompt | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const askPromptTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     AppStorage.get().then(data => {
@@ -71,6 +73,28 @@ export default function App() {
     save({ tabGroupPrompts: prompts, activeTabGroupPromptId: activeId });
     if (editingPrompt?.id === id) setEditingPrompt(null);
   };
+
+  // ── Ask Page Prompt CRUD ──
+  const addAskPrompt = () => {
+    setEditingAskPrompt({ id: generateId(), name: '', prompt: '' });
+  };
+  const saveAskPrompt = (p: SystemPrompt) => {
+    const exists = state.askPagePrompts.some(x => x.id === p.id);
+    const prompts = exists
+      ? state.askPagePrompts.map(x => x.id === p.id ? p : x)
+      : [...state.askPagePrompts, p];
+    const activeId = state.activeAskPagePromptId || prompts[0]?.id || '';
+    save({ askPagePrompts: prompts, activeAskPagePromptId: activeId });
+    setEditingAskPrompt(null);
+  };
+  const deleteAskPrompt = (id: string) => {
+    if (state.askPagePrompts.length <= 1) return;
+    const prompts = state.askPagePrompts.filter(x => x.id !== id);
+    const activeId = state.activeAskPagePromptId === id ? (prompts[0]?.id || '') : state.activeAskPagePromptId;
+    save({ askPagePrompts: prompts, activeAskPagePromptId: activeId });
+    if (editingAskPrompt?.id === id) setEditingAskPrompt(null);
+  };
+
   const navigateTo = (p: Page) => {
     setPage(p);
     setMobileMenuOpen(false);
@@ -123,12 +147,11 @@ export default function App() {
           </button>
 
           <button
-            className={`nav-link disabled ${page === 'ask-page' ? 'active' : ''}`}
-            disabled
+            className={`nav-link ${page === 'ask-page' ? 'active' : ''}`}
+            onClick={() => navigateTo('ask-page')}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            Ask About Page
-            <span className="coming-soon-badge">Soon</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Ask Page
           </button>
         </nav>
       </aside>
@@ -336,11 +359,124 @@ export default function App() {
           </section>
         )}
 
-        {/* ─── Ask About Page (placeholder) ─── */}
+        {/* ─── Ask Page Settings ─── */}
         {page === 'ask-page' && (
           <section>
-            <h1>Ask About Page</h1>
-            <p className="section-desc">Coming soon — ask AI questions about the current page.</p>
+            <h1>Ask Page</h1>
+            <p className="section-desc">Manage prompts and settings for the Ask Page chat overlay.</p>
+
+            {/* Panel Settings */}
+            <div className="card">
+              <h3>Panel Settings</h3>
+              <label className="field-label">Panel Width (px)</label>
+              <input
+                type="number"
+                value={state.askPagePanelWidth}
+                onChange={e => save({ askPagePanelWidth: Math.max(320, Math.min(800, parseInt(e.target.value) || 420)) })}
+                min={320}
+                max={800}
+              />
+              <label className="toggle-row-modal" style={{ marginTop: 16 }}>
+                <input
+                  type="checkbox"
+                  checked={state.askPagePersistChat}
+                  onChange={e => save({ askPagePersistChat: e.target.checked })}
+                />
+                <div>
+                  <span className="toggle-title">Persist Chat Across Pages</span>
+                  <span className="toggle-hint">Keep chat history when navigating to a different page (default: fresh per page)</span>
+                </div>
+              </label>
+            </div>
+
+            {/* Ask Page Prompts */}
+            <div className="providers-header">
+              <h3>System Prompts</h3>
+              <button className="add-btn" onClick={addAskPrompt}>+ Add Prompt</button>
+            </div>
+
+            <div className="providers-grid">
+              {state.askPagePrompts.map(p => (
+                <div key={p.id} className={`provider-card ${state.activeAskPagePromptId === p.id ? 'active' : ''}`}>
+                  <div className="provider-card-header">
+                    <span className="provider-name">{p.name || 'Untitled'}</span>
+                    {state.activeAskPagePromptId === p.id && <span className="active-badge">Default</span>}
+                  </div>
+                  <div className="prompt-preview">{p.prompt.substring(0, 120)}…</div>
+                  <div className="provider-actions">
+                    {state.activeAskPagePromptId !== p.id && (
+                      <button className="small-btn" onClick={() => save({ activeAskPagePromptId: p.id })}>Set Default</button>
+                    )}
+                    <button className="small-btn" onClick={() => setEditingAskPrompt({ ...p })}>Edit</button>
+                    {state.askPagePrompts.length > 1 && (
+                      <button className="small-btn danger" onClick={() => deleteAskPrompt(p.id)}>Delete</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Variable Reference */}
+            <div className="card var-reference">
+              <h3>Available Variables</h3>
+              <p className="section-desc" style={{ marginBottom: 12 }}>Use these in your Ask Page prompts — they'll be replaced with real data at runtime.</p>
+              <div className="var-grid">
+                {ASK_PAGE_PROMPT_VARIABLES.map(v => (
+                  <div key={v.key} className="var-row">
+                    <code className="var-key">{v.key}</code>
+                    <span className="var-desc">{v.description}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Ask Page Prompt Edit Modal */}
+            {editingAskPrompt && (
+              <div className="modal-overlay" onMouseDown={() => setEditingAskPrompt(null)}>
+                <div className="modal modal-wide" onMouseDown={e => e.stopPropagation()}>
+                  <h3>{state.askPagePrompts.some(x => x.id === editingAskPrompt.id) ? 'Edit' : 'Add'} Ask Page Prompt</h3>
+                  <label className="field-label">Prompt Name</label>
+                  <input type="text" value={editingAskPrompt.name} onChange={e => setEditingAskPrompt({ ...editingAskPrompt, name: e.target.value })} placeholder="e.g. Summarizer, Q&A, Code Explainer…" />
+                  <label className="field-label">Prompt Template</label>
+                  <textarea
+                    ref={askPromptTextareaRef}
+                    rows={16}
+                    value={editingAskPrompt.prompt}
+                    onChange={e => setEditingAskPrompt({ ...editingAskPrompt, prompt: e.target.value })}
+                    placeholder="Use variables like {pageTitle}, {pageContent}, etc."
+                  />
+                  <div className="var-hint-row">
+                    {ASK_PAGE_PROMPT_VARIABLES.map(v => (
+                      <button
+                        key={v.key}
+                        className="var-chip"
+                        type="button"
+                        onClick={() => {
+                          const ta = askPromptTextareaRef.current;
+                          const text = editingAskPrompt.prompt;
+                          if (ta) {
+                            const pos = ta.selectionStart ?? text.length;
+                            const newText = text.slice(0, pos) + v.key + text.slice(pos);
+                            setEditingAskPrompt({ ...editingAskPrompt, prompt: newText });
+                            requestAnimationFrame(() => {
+                              ta.focus();
+                              ta.selectionStart = ta.selectionEnd = pos + v.key.length;
+                            });
+                          } else {
+                            setEditingAskPrompt({ ...editingAskPrompt, prompt: text + v.key });
+                          }
+                        }}
+                        title={v.description}
+                      >{v.key}</button>
+                    ))}
+                  </div>
+                  <div className="modal-footer">
+                    <button className="btn-secondary" onClick={() => setEditingAskPrompt(null)}>Cancel</button>
+                    <button className="btn-primary" onClick={() => saveAskPrompt(editingAskPrompt)}>Save Prompt</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </section>
         )}
       </main>

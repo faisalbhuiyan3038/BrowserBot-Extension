@@ -28,6 +28,15 @@ export const PROMPT_VARIABLES: { key: string; description: string }[] = [
   { key: '{ungroupedTabIds}', description: 'Comma-separated IDs of tabs not in any group' },
 ];
 
+// ─── Available template variables for Ask Page prompts ───
+export const ASK_PAGE_PROMPT_VARIABLES: { key: string; description: string }[] = [
+  { key: '{pageTitle}',     description: 'Title of the current page' },
+  { key: '{pageUrl}',       description: 'URL of the current page' },
+  { key: '{pageContent}',   description: 'Extracted text content of the current page' },
+  { key: '{selectedText}',  description: 'Currently selected text on the page' },
+  { key: '{tabContext}',    description: 'Content from attached tabs' },
+];
+
 export interface StorageState {
   // AI provider config
   activeProvider: AIProviderType;
@@ -39,6 +48,12 @@ export interface StorageState {
   // Tab grouping prompts
   tabGroupPrompts: SystemPrompt[];
   activeTabGroupPromptId: string;
+
+  // Ask Page config
+  askPagePrompts: SystemPrompt[];
+  activeAskPagePromptId: string;
+  askPagePanelWidth: number;
+  askPagePersistChat: boolean;
 }
 
 export const DEFAULT_TAB_GROUP_PROMPT: SystemPrompt = {
@@ -98,6 +113,68 @@ export const ALL_BUILTIN_PROMPTS: SystemPrompt[] = [
   BUILTIN_CONTEXT_PROMPT
 ];
 
+// ─── Built-in Ask Page Prompts ──────────────────────────────
+
+export const DEFAULT_ASK_PAGE_PROMPT: SystemPrompt = {
+  id: 'askpage-default',
+  name: 'Default',
+  prompt: `You are a helpful AI assistant. The user is viewing a webpage and wants to ask questions about it.
+
+Page Title: {pageTitle}
+Page URL: {pageUrl}
+
+Answer the user's questions clearly and concisely. Use markdown formatting when helpful.`
+};
+
+export const BUILTIN_SUMMARIZE_PROMPT: SystemPrompt = {
+  id: 'askpage-summarize',
+  name: 'Summarize',
+  prompt: `You are a skilled summarizer. Analyze the provided page content and give a clear, structured summary.
+
+Page: {pageTitle}
+URL: {pageUrl}
+
+Content:
+{pageContent}
+
+Provide a comprehensive summary using markdown formatting with headings, bullet points, and key takeaways.`
+};
+
+export const BUILTIN_QA_PROMPT: SystemPrompt = {
+  id: 'askpage-qa',
+  name: 'Q&A Expert',
+  prompt: `You are an expert Q&A assistant. The user is reading a webpage and needs detailed answers.
+
+Page: {pageTitle}
+URL: {pageUrl}
+
+Content:
+{pageContent}
+
+Answer questions with precision. Quote relevant parts of the content when applicable. Use markdown for formatting.`
+};
+
+export const BUILTIN_EXPLAIN_PROMPT: SystemPrompt = {
+  id: 'askpage-explain',
+  name: 'Explain Simply',
+  prompt: `You are an expert at making complex topics simple. The user is reading a webpage and wants simplified explanations.
+
+Page: {pageTitle}
+URL: {pageUrl}
+
+Content:
+{pageContent}
+
+Explain concepts from this page in simple, easy-to-understand language. Use analogies and examples where helpful.`
+};
+
+export const ALL_BUILTIN_ASK_PAGE_PROMPTS: SystemPrompt[] = [
+  DEFAULT_ASK_PAGE_PROMPT,
+  BUILTIN_SUMMARIZE_PROMPT,
+  BUILTIN_QA_PROMPT,
+  BUILTIN_EXPLAIN_PROMPT,
+];
+
 export const defaultState: StorageState = {
   activeProvider: 'openai',
   activeOpenAIProviderId: 'default',
@@ -114,7 +191,13 @@ export const defaultState: StorageState = {
     }
   ],
   tabGroupPrompts: ALL_BUILTIN_PROMPTS.map(p => ({ ...p })),
-  activeTabGroupPromptId: 'builtin-default'
+  activeTabGroupPromptId: 'builtin-default',
+
+  // Ask Page defaults
+  askPagePrompts: ALL_BUILTIN_ASK_PAGE_PROMPTS.map(p => ({ ...p })),
+  activeAskPagePromptId: 'askpage-default',
+  askPagePanelWidth: 420,
+  askPagePersistChat: false,
 };
 
 export const AppStorage = {
@@ -126,6 +209,10 @@ export const AppStorage = {
     if (!merged.tabGroupPrompts || merged.tabGroupPrompts.length === 0) {
       merged.tabGroupPrompts = [{ ...DEFAULT_TAB_GROUP_PROMPT }];
       merged.activeTabGroupPromptId = DEFAULT_TAB_GROUP_PROMPT.id;
+    }
+    if (!merged.askPagePrompts || merged.askPagePrompts.length === 0) {
+      merged.askPagePrompts = [{ ...DEFAULT_ASK_PAGE_PROMPT }];
+      merged.activeAskPagePromptId = DEFAULT_ASK_PAGE_PROMPT.id;
     }
     return merged;
   },
@@ -142,6 +229,12 @@ export const AppStorage = {
     return state.tabGroupPrompts.find(p => p.id === state.activeTabGroupPromptId)
       ?? state.tabGroupPrompts[0]
       ?? DEFAULT_TAB_GROUP_PROMPT;
+  },
+  getActiveAskPagePrompt: async (): Promise<SystemPrompt> => {
+    const state = await AppStorage.get();
+    return state.askPagePrompts.find(p => p.id === state.activeAskPagePromptId)
+      ?? state.askPagePrompts[0]
+      ?? DEFAULT_ASK_PAGE_PROMPT;
   }
 };
 
