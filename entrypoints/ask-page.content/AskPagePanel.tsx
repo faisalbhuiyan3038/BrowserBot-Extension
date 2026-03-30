@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
 import { AppStorage, SystemPrompt, OpenAIProvider, AIProviderType } from '../../utils/storage';
 
+// Hardcoded instruction always appended to Ask Page system prompts
+const MARKDOWN_FORMAT_INSTRUCTION = '\n\nIMPORTANT: Always format your responses using markdown. Use headings, bullet points, code blocks, bold, italic, and other markdown features to make your responses well-structured and readable.';
+
 interface AskPagePanelProps {
   pageTitle: string;
   pageUrl: string;
@@ -34,6 +37,8 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [panelWidth, setPanelWidth] = useState(420);
+  const [persistChat, setPersistChat] = useState(false);
+  const [currentTabAttached, setCurrentTabAttached] = useState(false);
 
   // Provider state
   const [providerType, setProviderType] = useState<AIProviderType>('openai');
@@ -45,6 +50,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   // Prompts
   const [prompts, setPrompts] = useState<SystemPrompt[]>([]);
   const [activePromptId, setActivePromptId] = useState('');
+  const [defaultPromptId, setDefaultPromptId] = useState('');
 
   // Tabs
   const [attachedTabs, setAttachedTabs] = useState<AttachedTab[]>([]);
@@ -55,6 +61,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const streamingContentRef = useRef('');
   const isResizingRef = useRef(false);
@@ -69,9 +76,27 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
       setOllamaModel(state.ollamaModel);
       setPrompts(state.askPagePrompts);
       setActivePromptId(state.activeAskPagePromptId);
+      setDefaultPromptId(state.activeAskPagePromptId);
       setPanelWidth(state.askPagePanelWidth || 420);
+      setPersistChat(state.askPagePersistChat || false);
+
+      // Load persisted chat if enabled
+      if (state.askPagePersistChat) {
+        browser.runtime.sendMessage({ type: 'LOAD_CHAT' }).then((data: any) => {
+          if (data && Array.isArray(data) && data.length > 0) {
+            setMessages(data);
+          }
+        }).catch(() => {});
+      }
     });
   }, []);
+
+  // ─── Persist chat to session storage (via background) ───
+  useEffect(() => {
+    if (persistChat && messages.length > 0) {
+      browser.runtime.sendMessage({ type: 'SAVE_CHAT', messages }).catch(() => {});
+    }
+  }, [messages, persistChat]);
 
   // ─── Register show callback for toggle ──────────────
   useEffect(() => {
@@ -164,22 +189,31 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     }, 300);
   }, [panelWidth]);
 
+  // ─── Check if a non-default prompt is selected (allows empty input) ───
+  const isNonDefaultPrompt = activePromptId !== defaultPromptId;
+  const canSend = isStreaming ? false : (isNonDefaultPrompt ? true : !!input.trim());
+
   // ─── Send message ───────────────────────────────────
   const sendMessage = async () => {
     const text = input.trim();
-    if (!text || isStreaming) return;
+    if (isStreaming) return;
+    if (!isNonDefaultPrompt && !text) return;
 
     // Build system prompt
     const activePrompt = prompts.find(p => p.id === activePromptId) ?? prompts[0];
     let systemContent = activePrompt?.prompt || '';
 
     // Interpolate variables
+    const allAttached = getAllAttachedTabs();
     systemContent = systemContent
       .replaceAll('{pageTitle}', pageTitle)
       .replaceAll('{pageUrl}', pageUrl)
       .replaceAll('{pageContent}', '(Not yet extracted)')
       .replaceAll('{selectedText}', window.getSelection()?.toString() || '')
-      .replaceAll('{tabContext}', attachedTabs.map(t => t.content).join('\n\n---\n\n'));
+      .replaceAll('{tabContext}', allAttached.map(t => t.content).join('\n\n---\n\n'));
+
+    // Always append markdown formatting instruction
+    systemContent += MARKDOWN_FORMAT_INSTRUCTION;
 
     // Build message history
     const chatMessages: { role: string; content: string }[] = [
@@ -187,8 +221,8 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     ];
 
     // Add tab context as a system-level message if tabs are attached
-    if (attachedTabs.length > 0) {
-      const tabContextContent = attachedTabs
+    if (allAttached.length > 0) {
+      const tabContextContent = allAttached
         .map(t => `--- Context from tab: ${t.title} (${t.url}) ---\n${t.content}`)
         .join('\n\n');
       chatMessages.push({
@@ -203,13 +237,14 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
       chatMessages.push({ role: msg.role, content: msg.content });
     }
 
-    // Add user message
-    chatMessages.push({ role: 'user', content: text });
+    // Add user message — if non-default prompt and no text, use prompt name as display
+    const userContent = text || `[${activePrompt?.name || 'Prompt'}]`;
+    chatMessages.push({ role: 'user', content: userContent });
 
     // Update UI
     setMessages(prev => [
       ...prev,
-      { role: 'user', content: text },
+      { role: 'user', content: userContent },
       { role: 'assistant', content: '' }
     ]);
     setInput('');
@@ -271,19 +306,64 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   };
 
   const removeTab = (tabId: number) => {
-    setAttachedTabs(prev => prev.filter(t => t.id !== tabId));
+    if (tabId === -1) {
+      setCurrentTabAttached(false);
+    } else {
+      setAttachedTabs(prev => prev.filter(t => t.id !== tabId));
+    }
   };
 
+  // Toggle current tab attachment
+  const toggleCurrentTab = () => {
+    if (currentTabAttached) {
+      setCurrentTabAttached(false);
+    } else {
+      setCurrentTabAttached(true);
+    }
+  };
+
+  // Get all attached tabs including current page if toggled
+  const getAllAttachedTabs = (): AttachedTab[] => {
+    const tabs = [...attachedTabs];
+    if (currentTabAttached) {
+      tabs.unshift({
+        id: -1,
+        title: pageTitle,
+        url: pageUrl,
+        content: `[Current Page: ${pageTitle}]\nURL: ${pageUrl}\n\n(Full content extraction not yet implemented)`
+      });
+    }
+    return tabs;
+  };
+
+  // Filter tabs in picker: exclude already attached
+  const attachedTabIds = new Set(attachedTabs.map(t => t.id));
   const filteredTabs = availableTabs.filter(t => {
+    if (attachedTabIds.has(t.id)) return false;
     const q = tabSearch.toLowerCase();
     return !q || t.title.toLowerCase().includes(q) || t.url.toLowerCase().includes(q);
   });
+
+  // Clear conversation
+  const clearConversation = () => {
+    setMessages([]);
+    streamingContentRef.current = '';
+    if (persistChat) {
+      browser.runtime.sendMessage({ type: 'CLEAR_CHAT' }).catch(() => {});
+    }
+  };
 
   // ─── Render markdown safely ─────────────────────────
   const renderMarkdown = (content: string) => {
     if (!content) return '';
     try {
-      return marked.parse(content) as string;
+      let html = marked.parse(content) as string;
+      // Add copy buttons to code blocks
+      html = html.replace(/<pre><code([^>]*)>/g, (match, attrs) => {
+        return `<div class="askpage-code-wrapper"><button class="askpage-copy-btn" onclick="(function(btn){var code=btn.parentElement.querySelector('code');navigator.clipboard.writeText(code.innerText).then(function(){btn.textContent='Copied!';setTimeout(function(){btn.textContent='Copy'},1500)});})(this)">Copy</button><pre><code${attrs}>`;
+      });
+      html = html.replace(/<\/code><\/pre>/g, '</code></pre></div>');
+      return html;
     } catch {
       return content;
     }
@@ -329,6 +409,13 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
         </div>
         <span className="askpage-header-title">Ask Page</span>
 
+        {messages.length > 0 && (
+          <button className="askpage-header-btn" onClick={clearConversation} title="Clear conversation">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+          </button>
+        )}
         <button className="askpage-header-btn" onClick={() => setMinimized(true)} title="Minimize">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M5 12h14"/>
@@ -390,7 +477,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
           <p>Ask questions, get summaries, or explore the content of the current page with AI.</p>
         </div>
       ) : (
-        <div className="askpage-messages">
+        <div className="askpage-messages" ref={messagesContainerRef}>
           {messages.map((msg, i) => (
             <div
               key={i}
@@ -416,6 +503,19 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
       {/* Tab Context Bar */}
       <div className="askpage-tabs-bar">
         <span className="askpage-tabs-label">Context</span>
+        {/* Current tab quick-select chip */}
+        <button
+          className={`askpage-current-tab-chip ${currentTabAttached ? 'active' : ''}`}
+          onClick={toggleCurrentTab}
+          title={currentTabAttached ? 'Remove current page context' : 'Add current page as context'}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+            <polyline points="13 2 13 9 20 9"/>
+          </svg>
+          This Page
+          {currentTabAttached && <span className="askpage-tab-chip-check">✓</span>}
+        </button>
         {attachedTabs.map(tab => (
           <div key={tab.id} className="askpage-tab-chip">
             <span className="askpage-tab-chip-title">{tab.title}</span>
@@ -452,7 +552,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
           <button
             className="askpage-send-btn"
             onClick={sendMessage}
-            disabled={!input.trim()}
+            disabled={!canSend}
             title="Send"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

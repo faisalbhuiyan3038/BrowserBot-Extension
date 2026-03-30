@@ -31,6 +31,23 @@ export default defineBackground(() => {
       return false;
     }
 
+    if (message.type === 'SAVE_CHAT') {
+      browser.storage.session.set({ askPageChat: message.messages });
+      return false;
+    }
+
+    if (message.type === 'LOAD_CHAT') {
+      browser.storage.session.get('askPageChat').then((data: any) => {
+        sendResponse(data.askPageChat || []);
+      }).catch(() => sendResponse([]));
+      return true;
+    }
+
+    if (message.type === 'CLEAR_CHAT') {
+      browser.storage.session.remove('askPageChat');
+      return false;
+    }
+
     return false;
   });
 

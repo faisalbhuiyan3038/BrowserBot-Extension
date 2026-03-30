@@ -836,5 +836,75 @@ function getStyles(): string {
   line-height: 1.5;
   margin: 0;
 }
+
+/* ─── Code Copy Button ─────────────────────────────── */
+
+.askpage-code-wrapper {
+  position: relative;
+  margin: 8px 0;
+}
+
+.askpage-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 3px 10px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 5px;
+  color: #9ca3af;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+  z-index: 2;
+}
+
+.askpage-copy-btn:hover {
+  background: rgba(167, 139, 250, 0.2);
+  border-color: rgba(167, 139, 250, 0.4);
+  color: #a78bfa;
+}
+
+.askpage-code-wrapper pre {
+  margin: 0 !important;
+}
+
+/* ─── Current Tab Chip ─────────────────────────────── */
+
+.askpage-current-tab-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  color: #9ca3af;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.askpage-current-tab-chip:hover {
+  background: rgba(99, 102, 241, 0.1);
+  border-color: rgba(99, 102, 241, 0.3);
+  color: #a78bfa;
+}
+
+.askpage-current-tab-chip.active {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: #a78bfa;
+  color: #a78bfa;
+}
+
+.askpage-tab-chip-check {
+  font-size: 11px;
+  font-weight: 700;
+}
 `;
 }
