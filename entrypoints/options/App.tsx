@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   AppStorage, StorageState, defaultState,
-  AIProviderType, OpenAIProvider, SystemPrompt, PROMPT_VARIABLES, ASK_PAGE_PROMPT_VARIABLES, generateId
+  AIProviderType, ExtractionAlgorithm, OpenAIProvider, SystemPrompt, PROMPT_VARIABLES, ASK_PAGE_PROMPT_VARIABLES, generateId
 } from '../../utils/storage';
 
 type Page = 'providers' | 'tab-grouping' | 'ask-page';
@@ -552,6 +552,34 @@ export default function App() {
                   <span className="toggle-hint">Keep active chat when navigating. Chat syncs in real-time across tabs.</span>
                 </div>
               </label>
+            </div>
+
+            {/* Page Extraction Algorithm */}
+            <div className="card" style={{ marginTop: 16 }}>
+              <h3>Page Content Extraction</h3>
+              <p className="section-desc" style={{ marginBottom: 12 }}>Choose how page content is extracted when used as context for AI conversations.</p>
+              <label className="field-label">Extraction Algorithm</label>
+              <select
+                value={state.pageExtractionAlgorithm}
+                onChange={e => save({ pageExtractionAlgorithm: parseInt(e.target.value) as ExtractionAlgorithm })}
+              >
+                <option value={1}>Text Extraction</option>
+                <option value={2}>Optimized Content Extraction</option>
+                <option value={3}>⚠️ Full Content Extraction</option>
+              </select>
+              <div className="algo-descriptions" style={{ marginTop: 12 }}>
+                {state.pageExtractionAlgorithm === 1 && (
+                  <p className="section-desc">Lightweight extraction of headings, paragraphs, and list items with markdown formatting. Includes smart truncation to stay within token limits. Best for most use cases.</p>
+                )}
+                {state.pageExtractionAlgorithm === 2 && (
+                  <p className="section-desc">Cleans full page HTML, removes duplicates, and extracts structured text. Includes automatic YouTube transcript extraction when on a video page.</p>
+                )}
+                {state.pageExtractionAlgorithm === 3 && (
+                  <div>
+                    <p className="section-desc" style={{ color: '#f59e0b' }}>⚠️ <strong>Warning:</strong> Extracts maximum page content using Mozilla Readability. This may use significantly more tokens as more content is captured, including potentially unnecessary content.</p>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Chat History Settings */}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
-import { AppStorage, SystemPrompt, OpenAIProvider, AIProviderType, Conversation, ChatMsg, generateId } from '../../utils/storage';
+import { AppStorage, SystemPrompt, OpenAIProvider, AIProviderType, ExtractionAlgorithm, Conversation, ChatMsg, generateId } from '../../utils/storage';
+import { extractPageContent } from '../../utils/extractor';
 
 // Hardcoded instruction always appended to Ask Page system prompts
 const MARKDOWN_FORMAT_INSTRUCTION = '\n\nIMPORTANT: Always format your responses using markdown. Use headings, bullet points, code blocks, bold, italic, and other markdown features to make your responses well-structured and readable.';
@@ -34,6 +35,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   const [panelWidth, setPanelWidth] = useState(420);
   const [persistChat, setPersistChat] = useState(false);
   const [currentTabAttached, setCurrentTabAttached] = useState(false);
+  const [extractionAlgorithm, setExtractionAlgorithm] = useState<ExtractionAlgorithm>(1);
 
   // Provider state
   const [providerType, setProviderType] = useState<AIProviderType>('openai');
@@ -64,10 +66,12 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const streamingContentRef = useRef('');
   const streamingThinkingRef = useRef('');
   const isResizingRef = useRef(false);
+  const userScrolledUpRef = useRef(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ─── Load storage state ─────────────────────────────
@@ -81,6 +85,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
       setQuickPrompts(state.askPagePrompts);
       setPanelWidth(state.askPagePanelWidth || 420);
       setPersistChat(state.askPagePersistChat || false);
+      setExtractionAlgorithm(state.pageExtractionAlgorithm || 1);
 
       // Load persisted chat if enabled
       if (state.askPagePersistChat) {
@@ -205,10 +210,25 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     return () => browser.runtime.onMessage.removeListener(listener);
   }, [persistChat]);
 
-  // ─── Auto-scroll to bottom ──────────────────────────
+  // ─── Smart auto-scroll (only if user is near bottom) ──
+  const scrollToBottom = useCallback(() => {
+    if (!userScrolledUpRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, []);
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, thinkingContent]);
+    scrollToBottom();
+  }, [messages, thinkingContent, scrollToBottom]);
+
+  const handleMessagesScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    // User is "near bottom" if within 80px of the end
+    const nearBottom = scrollHeight - scrollTop - clientHeight < 80;
+    userScrolledUpRef.current = !nearBottom;
+  }, []);
 
   // ─── Resize handling ────────────────────────────────
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -248,11 +268,21 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     const text = input.trim();
     if (isStreaming || !text) return;
 
+    // Reset scroll tracking for new message
+    userScrolledUpRef.current = false;
+
+    // Extract page content using selected algorithm
+    let pageContent = '(Could not extract page content)';
+    try {
+      const result = await extractPageContent(extractionAlgorithm);
+      pageContent = result.content;
+    } catch (_) { /* extraction failed, use fallback */ }
+
     // Build system prompt
     let sysContent = systemPrompt
       .replaceAll('{pageTitle}', pageTitle)
       .replaceAll('{pageUrl}', pageUrl)
-      .replaceAll('{pageContent}', '(Not yet extracted)')
+      .replaceAll('{pageContent}', pageContent)
       .replaceAll('{selectedText}', window.getSelection()?.toString() || '')
       .replaceAll('{tabContext}', getAllAttachedTabs().map(t => t.content).join('\n\n---\n\n'));
 
@@ -379,11 +409,25 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
         id: -1,
         title: pageTitle,
         url: pageUrl,
-        content: `[Current Page: ${pageTitle}]\nURL: ${pageUrl}\n\n(Full content extraction not yet implemented)`
+        content: currentTabContent || `[Current Page: ${pageTitle}]\nURL: ${pageUrl}`
       });
     }
     return tabs;
   };
+
+  // Extract current tab content when attached
+  const [currentTabContent, setCurrentTabContent] = useState<string>('');
+  useEffect(() => {
+    if (currentTabAttached) {
+      extractPageContent(extractionAlgorithm).then(result => {
+        setCurrentTabContent(`[Current Page: ${pageTitle}]\nURL: ${pageUrl}\n\n${result.content}`);
+      }).catch(() => {
+        setCurrentTabContent(`[Current Page: ${pageTitle}]\nURL: ${pageUrl}\n\n(Extraction failed)`);
+      });
+    } else {
+      setCurrentTabContent('');
+    }
+  }, [currentTabAttached, extractionAlgorithm, pageTitle, pageUrl]);
 
   const attachedTabIds = new Set(attachedTabs.map(t => t.id));
   const filteredTabs = availableTabs.filter(t => {
@@ -644,7 +688,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
           )}
         </div>
       ) : (
-        <div className="askpage-messages">
+        <div className="askpage-messages" ref={messagesContainerRef} onScroll={handleMessagesScroll}>
           {messages.map((msg, i) => (
             <div key={i}>
               {/* Show thinking block for assistant messages */}

@@ -206,15 +206,37 @@ export default defineBackground(() => {
       }));
   }
 
-  // ─── Extract content from a tab (placeholder) ─────────────
+  // ─── Extract content from a tab via content script message ──
   async function handleGetTabContent(tabId: number) {
     try {
       const tab = await browser.tabs.get(tabId);
+      const state = await AppStorage.get();
+      const algorithm = state.pageExtractionAlgorithm || 1;
+
+      // Send extraction request to the content script in that tab
+      try {
+        const result = await browser.tabs.sendMessage(tabId, {
+          type: 'EXTRACT_PAGE_CONTENT',
+          algorithm
+        });
+        if (result && result.content) {
+          return {
+            tabId,
+            title: tab.title || '',
+            url: tab.url || '',
+            content: `[Tab: ${tab.title}]\nURL: ${tab.url}\n\n${result.content}`
+          };
+        }
+      } catch (_) {
+        // Content script might not be injected in this tab
+      }
+
+      // Fallback: return basic info
       return {
         tabId,
         title: tab.title || '',
         url: tab.url || '',
-        content: `[Tab: ${tab.title}]\nURL: ${tab.url}\n\n(Full content extraction not yet implemented)`
+        content: `[Tab: ${tab.title}]\nURL: ${tab.url}\n\n(Could not extract content — page may not support extraction)`
       };
     } catch (err: any) {
       return {

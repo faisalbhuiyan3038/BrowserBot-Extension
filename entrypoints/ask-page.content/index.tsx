@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { createElement } from 'react';
 import AskPagePanel from './AskPagePanel';
+import { extractPageContent } from '../../utils/extractor';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -12,13 +13,32 @@ export default defineContentScript({
     let showCallback: (() => void) | null = null;
 
     // Listen for toggle messages from background
-    browser.runtime.onMessage.addListener((message) => {
+    browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message.type === 'TOGGLE_ASK_PAGE') {
         if (!uiMounted) {
           mountUI(message.pageTitle || document.title, message.pageUrl || location.href);
         } else if (showCallback) {
           showCallback();
         }
+      }
+
+      // Handle content extraction requests from background
+      if (message.type === 'EXTRACT_PAGE_CONTENT') {
+        const algorithm = message.algorithm || 1;
+        extractPageContent(algorithm).then(result => {
+          sendResponse({
+            content: result.content,
+            originalLength: result.originalLength,
+            truncatedLength: result.truncatedLength,
+            algorithm: result.algorithm
+          });
+        }).catch(err => {
+          sendResponse({
+            content: '',
+            error: err.message
+          });
+        });
+        return true; // Keep message channel open for async response
       }
     });
 

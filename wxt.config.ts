@@ -6,7 +6,7 @@ export default defineConfig({
   manifest: {
     name: 'BrowserBot',
     description: 'AI-powered browser automation — group tabs, ask about pages, and more.',
-    permissions: ['tabs', 'tabGroups', 'storage'],
+    permissions: ['tabs', 'tabGroups', 'storage', 'scripting'],
     host_permissions: ['<all_urls>']
   }
 });
