@@ -228,10 +228,27 @@ export default defineBackground(() => {
           };
         }
       } catch (_) {
-        // Content script might not be injected in this tab
+        // Content script might not be injected in this tab. Try direct script injection fallback.
+        try {
+          const textResult = await browser.scripting.executeScript({
+            target: { tabId },
+            func: () => document.body ? document.body.innerText.substring(0, 20000) : ''
+          });
+          
+          if (textResult && textResult[0] && textResult[0].result) {
+            return {
+              tabId,
+              title: tab.title || '',
+              url: tab.url || '',
+              content: `[Tab: ${tab.title}]\nURL: ${tab.url}\n\n${textResult[0].result}`
+            };
+          }
+        } catch (injectErr) {
+          // Injection also failed (e.g., chrome:// url)
+        }
       }
 
-      // Fallback: return basic info
+      // Final fallback: return basic info with clear failure message
       return {
         tabId,
         title: tab.title || '',

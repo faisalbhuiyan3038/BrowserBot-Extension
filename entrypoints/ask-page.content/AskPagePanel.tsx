@@ -213,7 +213,9 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   // ─── Smart auto-scroll (only if user is near bottom) ──
   const scrollToBottom = useCallback(() => {
     if (!userScrolledUpRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      }
     }
   }, []);
 
@@ -226,7 +228,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     if (!container) return;
     const { scrollTop, scrollHeight, clientHeight } = container;
     // User is "near bottom" if within 80px of the end
-    const nearBottom = scrollHeight - scrollTop - clientHeight < 80;
+    const nearBottom = scrollHeight - scrollTop - Math.ceil(clientHeight) < 80;
     userScrolledUpRef.current = !nearBottom;
   }, []);
 
@@ -271,20 +273,33 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     // Reset scroll tracking for new message
     userScrolledUpRef.current = false;
 
-    // Extract page content using selected algorithm
-    let pageContent = '(Could not extract page content)';
-    try {
-      const result = await extractPageContent(extractionAlgorithm);
-      pageContent = result.content;
-    } catch (_) { /* extraction failed, use fallback */ }
-
     // Build system prompt
     let sysContent = systemPrompt
       .replaceAll('{pageTitle}', pageTitle)
       .replaceAll('{pageUrl}', pageUrl)
-      .replaceAll('{pageContent}', pageContent)
-      .replaceAll('{selectedText}', window.getSelection()?.toString() || '')
-      .replaceAll('{tabContext}', getAllAttachedTabs().map(t => t.content).join('\n\n---\n\n'));
+      .replaceAll('{selectedText}', window.getSelection()?.toString() || '');
+
+    // Extract page content ONLY if explicitly used in prompt
+    if (sysContent.includes('{pageContent}')) {
+      let pageContent = '(Could not extract page content)';
+      try {
+        const result = await extractPageContent(extractionAlgorithm);
+        pageContent = result.content;
+      } catch (_) { /* */ }
+      sysContent = sysContent.replaceAll('{pageContent}', pageContent);
+    }
+
+    // Pass tab contexts via {tabContext} or append at the end
+    const attachedTabsContext = getAllAttachedTabs().map(t => t.content).join('\n\n---\n\n');
+    if (attachedTabsContext) {
+      if (sysContent.includes('{tabContext}')) {
+        sysContent = sysContent.replaceAll('{tabContext}', attachedTabsContext);
+      } else {
+        sysContent += '\n\nContext from attached tabs:\n' + attachedTabsContext;
+      }
+    } else {
+      sysContent = sysContent.replaceAll('{tabContext}', ''); // clear if present but empty
+    }
 
     // Always append markdown instruction
     sysContent += MARKDOWN_FORMAT_INSTRUCTION;
