@@ -17,6 +17,13 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
   const askPromptTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Chrome AI state
+  const [chromeAIStatus, setChromeAIStatus] = useState<'checking' | 'readily' | 'after-download' | 'no' | 'unavailable'>('checking');
+  const [chromeAIError, setChromeAIError] = useState('');
+  const [chromeAIDownloading, setChromeAIDownloading] = useState(false);
+  const [chromeAIProgress, setChromeAIProgress] = useState(0);
 
   useEffect(() => {
     AppStorage.get().then(data => {
@@ -24,6 +31,52 @@ export default function App() {
       setLoading(false);
     });
   }, []);
+
+  // Check Chrome AI status when viewing providers
+  useEffect(() => {
+    if (state.activeProvider === 'chrome_ai') {
+      checkChromeAI();
+    }
+  }, [state.activeProvider]);
+
+  const checkChromeAI = () => {
+    setChromeAIStatus('checking');
+    browser.runtime.sendMessage({ type: 'CHECK_CHROME_AI' }).then((result: any) => {
+      setChromeAIStatus(result.status);
+      setChromeAIError(result.error || '');
+    }).catch(() => {
+      setChromeAIStatus('unavailable');
+      setChromeAIError('Could not check Chrome AI status');
+    });
+  };
+
+  const downloadChromeAI = () => {
+    setChromeAIDownloading(true);
+    setChromeAIProgress(0);
+
+    // Listen for progress events
+    const progressListener = (message: any) => {
+      if (message.type === 'CHROME_AI_DOWNLOAD_PROGRESS') {
+        setChromeAIProgress(message.progress);
+      }
+    };
+    browser.runtime.onMessage.addListener(progressListener);
+
+    browser.runtime.sendMessage({ type: 'DOWNLOAD_CHROME_AI' }).then((result: any) => {
+      browser.runtime.onMessage.removeListener(progressListener);
+      setChromeAIDownloading(false);
+      if (result?.error) {
+        setChromeAIError(result.error);
+      } else {
+        setChromeAIStatus('readily');
+        setChromeAIError('');
+      }
+    }).catch((err: any) => {
+      browser.runtime.onMessage.removeListener(progressListener);
+      setChromeAIDownloading(false);
+      setChromeAIError(err.message || 'Download failed');
+    });
+  };
 
   const save = async (patch: Partial<StorageState>) => {
     const next = { ...state, ...patch };
@@ -53,7 +106,7 @@ export default function App() {
     if (editingProvider?.id === id) setEditingProvider(null);
   };
 
-  // ── System Prompt CRUD ──
+  // ── Tab Grouping Prompt CRUD ──
   const addPrompt = () => {
     setEditingPrompt({ id: generateId(), name: '', prompt: '' });
   };
@@ -67,14 +120,14 @@ export default function App() {
     setEditingPrompt(null);
   };
   const deletePrompt = (id: string) => {
-    if (state.tabGroupPrompts.length <= 1) return; // keep at least one
+    if (state.tabGroupPrompts.length <= 1) return;
     const prompts = state.tabGroupPrompts.filter(x => x.id !== id);
     const activeId = state.activeTabGroupPromptId === id ? (prompts[0]?.id || '') : state.activeTabGroupPromptId;
     save({ tabGroupPrompts: prompts, activeTabGroupPromptId: activeId });
     if (editingPrompt?.id === id) setEditingPrompt(null);
   };
 
-  // ── Ask Page Prompt CRUD ──
+  // ── Ask Page Quick Prompt CRUD ──
   const addAskPrompt = () => {
     setEditingAskPrompt({ id: generateId(), name: '', prompt: '' });
   };
@@ -83,16 +136,46 @@ export default function App() {
     const prompts = exists
       ? state.askPagePrompts.map(x => x.id === p.id ? p : x)
       : [...state.askPagePrompts, p];
-    const activeId = state.activeAskPagePromptId || prompts[0]?.id || '';
-    save({ askPagePrompts: prompts, activeAskPagePromptId: activeId });
+    save({ askPagePrompts: prompts });
     setEditingAskPrompt(null);
   };
   const deleteAskPrompt = (id: string) => {
-    if (state.askPagePrompts.length <= 1) return;
     const prompts = state.askPagePrompts.filter(x => x.id !== id);
-    const activeId = state.activeAskPagePromptId === id ? (prompts[0]?.id || '') : state.activeAskPagePromptId;
-    save({ askPagePrompts: prompts, activeAskPagePromptId: activeId });
+    save({ askPagePrompts: prompts });
     if (editingAskPrompt?.id === id) setEditingAskPrompt(null);
+  };
+
+  // ── Import / Export ──
+  const handleExport = async () => {
+    try {
+      const json = await AppStorage.exportAll();
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `browserbot-settings-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Export failed: ' + (err as any).message);
+    }
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      await AppStorage.importAll(text);
+      const newState = await AppStorage.get();
+      setState(newState);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1200);
+    } catch (err) {
+      alert('Import failed: ' + (err as any).message);
+    }
+    // Reset the input
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const navigateTo = (p: Page) => {
@@ -154,6 +237,19 @@ export default function App() {
             Ask Page
           </button>
         </nav>
+
+        {/* ─── Import/Export Buttons ─── */}
+        <div className="sidebar-footer">
+          <input ref={fileInputRef} type="file" accept=".json" onChange={handleImport} style={{ display: 'none' }} />
+          <button className="sidebar-footer-btn" onClick={handleExport} title="Export all settings and conversations">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            Export
+          </button>
+          <button className="sidebar-footer-btn" onClick={() => fileInputRef.current?.click()} title="Import settings and conversations from file">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+            Import
+          </button>
+        </div>
       </aside>
 
       {/* ═══ Content ═══ */}
@@ -189,9 +285,36 @@ export default function App() {
             )}
 
             {state.activeProvider === 'chrome_ai' && (
-              <div className="card info-card">
+              <div className="card">
                 <h3>Chrome Built-in AI</h3>
-                <p>Uses the browser's native Prompt API. No configuration needed — enable it in <code>chrome://flags</code>.</p>
+                {chromeAIStatus === 'checking' && (
+                  <p className="chrome-ai-status checking">Checking availability…</p>
+                )}
+                {chromeAIStatus === 'readily' && (
+                  <p className="chrome-ai-status ready">✅ Chrome AI is ready! Gemini Nano model is available.</p>
+                )}
+                {chromeAIStatus === 'after-download' && (
+                  <div>
+                    <p className="chrome-ai-status download">⬇️ Chrome AI model needs to be downloaded.</p>
+                    {chromeAIDownloading ? (
+                      <div className="chrome-ai-progress">
+                        <div className="chrome-ai-progress-bar" style={{ width: `${chromeAIProgress}%` }} />
+                        <span>{chromeAIProgress}%</span>
+                      </div>
+                    ) : (
+                      <button className="btn-primary" onClick={downloadChromeAI} style={{ marginTop: 8 }}>
+                        Download Model
+                      </button>
+                    )}
+                  </div>
+                )}
+                {(chromeAIStatus === 'no' || chromeAIStatus === 'unavailable') && (
+                  <div>
+                    <p className="chrome-ai-status error">❌ Chrome AI is not available</p>
+                    <pre className="chrome-ai-error">{chromeAIError}</pre>
+                    <button className="small-btn" onClick={checkChromeAI} style={{ marginTop: 8 }}>Re-check</button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -336,7 +459,6 @@ export default function App() {
                             const pos = ta.selectionStart ?? text.length;
                             const newText = text.slice(0, pos) + v.key + text.slice(pos);
                             setEditingPrompt({ ...editingPrompt, prompt: newText });
-                            // Restore cursor after React re-render
                             requestAnimationFrame(() => {
                               ta.focus();
                               ta.selectionStart = ta.selectionEnd = pos + v.key.length;
@@ -363,10 +485,53 @@ export default function App() {
         {page === 'ask-page' && (
           <section>
             <h1>Ask Page</h1>
-            <p className="section-desc">Manage prompts and settings for the Ask Page chat overlay.</p>
+            <p className="section-desc">Configure the Ask Page chat overlay — system prompt, quick prompts, and behavior.</p>
+
+            {/* System Prompt */}
+            <div className="card">
+              <h3>System Prompt</h3>
+              <p className="section-desc" style={{ marginBottom: 8 }}>This prompt is always active for every Ask Page conversation. It provides context and instructions to the AI.</p>
+              <textarea
+                rows={8}
+                value={state.askPageSystemPrompt}
+                onChange={e => save({ askPageSystemPrompt: e.target.value })}
+                placeholder="Enter your system prompt…"
+                style={{ fontFamily: 'monospace', fontSize: 12 }}
+              />
+              <div className="var-hint-row" style={{ marginTop: 8 }}>
+                {ASK_PAGE_PROMPT_VARIABLES.map(v => (
+                  <span key={v.key} className="var-chip-static" title={v.description}>{v.key}</span>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick Prompts */}
+            <div className="providers-header">
+              <h3>Quick Prompts</h3>
+              <button className="add-btn" onClick={addAskPrompt}>+ Add Prompt</button>
+            </div>
+            <p className="section-desc">Reusable text templates. When selected in the chat, their text fills the input box for you to use or edit.</p>
+
+            <div className="providers-grid">
+              {state.askPagePrompts.map(p => (
+                <div key={p.id} className="provider-card">
+                  <div className="provider-card-header">
+                    <span className="provider-name">{p.name || 'Untitled'}</span>
+                  </div>
+                  <div className="prompt-preview">{p.prompt.substring(0, 120)}…</div>
+                  <div className="provider-actions">
+                    <button className="small-btn" onClick={() => setEditingAskPrompt({ ...p })}>Edit</button>
+                    <button className="small-btn danger" onClick={() => deleteAskPrompt(p.id)}>Delete</button>
+                  </div>
+                </div>
+              ))}
+              {state.askPagePrompts.length === 0 && (
+                <div className="card info-card"><p>No quick prompts. Click <strong>+ Add Prompt</strong> to create reusable templates.</p></div>
+              )}
+            </div>
 
             {/* Panel Settings */}
-            <div className="card">
+            <div className="card" style={{ marginTop: 20 }}>
               <h3>Panel Settings</h3>
               <label className="field-label">Panel Width (px)</label>
               <input
@@ -384,42 +549,44 @@ export default function App() {
                 />
                 <div>
                   <span className="toggle-title">Persist Chat Across Pages</span>
-                  <span className="toggle-hint">Keep chat history when navigating to a different page (default: fresh per page)</span>
+                  <span className="toggle-hint">Keep active chat when navigating. Chat syncs in real-time across tabs.</span>
                 </div>
               </label>
             </div>
 
-            {/* Ask Page Prompts */}
-            <div className="providers-header">
-              <h3>System Prompts</h3>
-              <button className="add-btn" onClick={addAskPrompt}>+ Add Prompt</button>
-            </div>
+            {/* Chat History Settings */}
+            <div className="card" style={{ marginTop: 16 }}>
+              <h3>Chat History</h3>
+              <label className="field-label">Auto-delete conversations older than (days)</label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="number"
+                  value={state.askPageAutoDeleteDays}
+                  onChange={e => save({ askPageAutoDeleteDays: Math.max(0, parseInt(e.target.value) || 0) })}
+                  min={0}
+                  style={{ maxWidth: 100 }}
+                />
+                <span className="toggle-hint">{state.askPageAutoDeleteDays === 0 ? 'Disabled (never auto-delete)' : `Delete after ${state.askPageAutoDeleteDays} day${state.askPageAutoDeleteDays > 1 ? 's' : ''}`}</span>
+              </div>
 
-            <div className="providers-grid">
-              {state.askPagePrompts.map(p => (
-                <div key={p.id} className={`provider-card ${state.activeAskPagePromptId === p.id ? 'active' : ''}`}>
-                  <div className="provider-card-header">
-                    <span className="provider-name">{p.name || 'Untitled'}</span>
-                    {state.activeAskPagePromptId === p.id && <span className="active-badge">Default</span>}
-                  </div>
-                  <div className="prompt-preview">{p.prompt.substring(0, 120)}…</div>
-                  <div className="provider-actions">
-                    {state.activeAskPagePromptId !== p.id && (
-                      <button className="small-btn" onClick={() => save({ activeAskPagePromptId: p.id })}>Set Default</button>
-                    )}
-                    <button className="small-btn" onClick={() => setEditingAskPrompt({ ...p })}>Edit</button>
-                    {state.askPagePrompts.length > 1 && (
-                      <button className="small-btn danger" onClick={() => deleteAskPrompt(p.id)}>Delete</button>
-                    )}
-                  </div>
-                </div>
-              ))}
+              <label className="field-label" style={{ marginTop: 12 }}>Maximum stored conversations</label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="number"
+                  value={state.askPageMaxConversations}
+                  onChange={e => save({ askPageMaxConversations: Math.max(10, Math.min(1000, parseInt(e.target.value) || 100)) })}
+                  min={10}
+                  max={1000}
+                  style={{ maxWidth: 100 }}
+                />
+                <span className="toggle-hint">Oldest conversations removed when limit reached</span>
+              </div>
             </div>
 
             {/* Variable Reference */}
-            <div className="card var-reference">
+            <div className="card var-reference" style={{ marginTop: 16 }}>
               <h3>Available Variables</h3>
-              <p className="section-desc" style={{ marginBottom: 12 }}>Use these in your Ask Page prompts — they'll be replaced with real data at runtime.</p>
+              <p className="section-desc" style={{ marginBottom: 12 }}>Use these in your system prompt — they'll be replaced with real data at runtime.</p>
               <div className="var-grid">
                 {ASK_PAGE_PROMPT_VARIABLES.map(v => (
                   <div key={v.key} className="var-row">
@@ -430,46 +597,21 @@ export default function App() {
               </div>
             </div>
 
-            {/* Ask Page Prompt Edit Modal */}
+            {/* Ask Page Quick Prompt Edit Modal */}
             {editingAskPrompt && (
               <div className="modal-overlay" onMouseDown={() => setEditingAskPrompt(null)}>
                 <div className="modal modal-wide" onMouseDown={e => e.stopPropagation()}>
-                  <h3>{state.askPagePrompts.some(x => x.id === editingAskPrompt.id) ? 'Edit' : 'Add'} Ask Page Prompt</h3>
+                  <h3>{state.askPagePrompts.some(x => x.id === editingAskPrompt.id) ? 'Edit' : 'Add'} Quick Prompt</h3>
                   <label className="field-label">Prompt Name</label>
-                  <input type="text" value={editingAskPrompt.name} onChange={e => setEditingAskPrompt({ ...editingAskPrompt, name: e.target.value })} placeholder="e.g. Summarizer, Q&A, Code Explainer…" />
-                  <label className="field-label">Prompt Template</label>
+                  <input type="text" value={editingAskPrompt.name} onChange={e => setEditingAskPrompt({ ...editingAskPrompt, name: e.target.value })} placeholder="e.g. Summarize, Explain, Code Review…" />
+                  <label className="field-label">Prompt Text</label>
                   <textarea
                     ref={askPromptTextareaRef}
-                    rows={16}
+                    rows={6}
                     value={editingAskPrompt.prompt}
                     onChange={e => setEditingAskPrompt({ ...editingAskPrompt, prompt: e.target.value })}
-                    placeholder="Use variables like {pageTitle}, {pageContent}, etc."
+                    placeholder="The text that will fill the input box when this prompt is selected."
                   />
-                  <div className="var-hint-row">
-                    {ASK_PAGE_PROMPT_VARIABLES.map(v => (
-                      <button
-                        key={v.key}
-                        className="var-chip"
-                        type="button"
-                        onClick={() => {
-                          const ta = askPromptTextareaRef.current;
-                          const text = editingAskPrompt.prompt;
-                          if (ta) {
-                            const pos = ta.selectionStart ?? text.length;
-                            const newText = text.slice(0, pos) + v.key + text.slice(pos);
-                            setEditingAskPrompt({ ...editingAskPrompt, prompt: newText });
-                            requestAnimationFrame(() => {
-                              ta.focus();
-                              ta.selectionStart = ta.selectionEnd = pos + v.key.length;
-                            });
-                          } else {
-                            setEditingAskPrompt({ ...editingAskPrompt, prompt: text + v.key });
-                          }
-                        }}
-                        title={v.description}
-                      >{v.key}</button>
-                    ))}
-                  </div>
                   <div className="modal-footer">
                     <button className="btn-secondary" onClick={() => setEditingAskPrompt(null)}>Cancel</button>
                     <button className="btn-primary" onClick={() => saveAskPrompt(editingAskPrompt)}>Save Prompt</button>

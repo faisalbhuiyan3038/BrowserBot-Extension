@@ -1,19 +1,14 @@
 
-> browserbot@0.0.0 build
-> wxt build
-
-
 [90mWXT[39m [90m[1m0.20.20[22m[39m
 [36mℹ[39m Building [36mchrome-mv3[39m for [36mproduction[39m with [32mVite 8.0.3[39m
-[33m-[39m Preparing...
-[1G[32m✔[39m Built extension in 404 ms
+[32m✔[39m Built extension in 402 ms
 [90m  ├─[39m [2m.output\chrome-mv3\[22m[34mmanifest.json[39m                   [2m592 B[22m    
 [90m  ├─[39m [2m.output\chrome-mv3\[22m[32moptions.html[39m                    [2m820 B[22m    
 [90m  ├─[39m [2m.output\chrome-mv3\[22m[32mpopup.html[39m                      [2m806 B[22m    
-[90m  ├─[39m [2m.output\chrome-mv3\[22m[36mbackground.js[39m                   [2m16.12 kB[22m 
+[90m  ├─[39m [2m.output\chrome-mv3\[22m[36mbackground.js[39m                   [2m16.29 kB[22m 
 [90m  ├─[39m [2m.output\chrome-mv3\[22m[36mchunks\jsx-runtime-CnjTKFTb.js[39m  [2m197.01 kB[22m
 [90m  ├─[39m [2m.output\chrome-mv3\[22m[36mchunks\options-CEXgkkQi.js[39m      [2m21.23 kB[22m 
-[90m  ├─[39m [2m.output\chrome-mv3\[22m[36mchunks\popup-COLaGzS2.js[39m        [2m10.78 kB[22m 
+[90m  ├─[39m [2m.output\chrome-mv3\[22m[36mchunks\popup-w0hp5kJ6.js[39m        [2m11.53 kB[22m 
 [90m  ├─[39m [2m.output\chrome-mv3\[22m[36mcontent-scripts\ask-page.js[39m     [2m288.76 kB[22m
 [90m  ├─[39m [2m.output\chrome-mv3\[22m[35massets\options-CLhHGTWk.css[39m     [2m11.59 kB[22m 
 [90m  ├─[39m [2m.output\chrome-mv3\[22m[35massets\popup-DgM30ctv.css[39m       [2m5.76 kB[22m  
@@ -23,5 +18,5 @@
 [90m  ├─[39m [2m.output\chrome-mv3\[22m[34micon\48.png[39m                     [2m1.33 kB[22m  
 [90m  ├─[39m [2m.output\chrome-mv3\[22m[34micon\96.png[39m                     [2m2.37 kB[22m  
 [90m  └─[39m [2m.output\chrome-mv3\[22m[34mwxt.svg[39m                         [2m1.09 kB[22m  
-[36mΣ Total size:[39m 562.8 kB                                                   
-[32m✔[39m Finished in 437 ms
+[36mΣ Total size:[39m 563.73 kB                                                  
+[32m✔[39m Finished in 433 ms

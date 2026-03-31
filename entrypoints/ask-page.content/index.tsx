@@ -226,43 +226,12 @@ function getStyles(): string {
   color: #f3f4f6;
 }
 
-/* ─── Prompt Chips ─────────────────────────────────── */
+/* ─── Quick Prompt Select ──────────────────────── */
 
-.askpage-prompt-chips {
-  display: flex;
-  gap: 6px;
-  padding: 8px 16px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  overflow-x: auto;
-  flex-shrink: 0;
-  scrollbar-width: none;
-}
-
-.askpage-prompt-chips::-webkit-scrollbar { display: none; }
-
-.askpage-prompt-chip {
-  padding: 5px 12px;
-  background: rgba(167, 139, 250, 0.1);
-  border: 1px solid rgba(167, 139, 250, 0.2);
-  border-radius: 20px;
-  color: #a78bfa;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.15s;
-  font-family: inherit;
-}
-
-.askpage-prompt-chip:hover {
-  background: rgba(167, 139, 250, 0.2);
-  border-color: rgba(167, 139, 250, 0.4);
-}
-
-.askpage-prompt-chip.active {
-  background: #a78bfa;
-  color: #fff;
-  border-color: #a78bfa;
+.askpage-quick-prompt-select {
+  max-width: 140px;
+  min-width: 110px;
+  flex: 0 0 auto !important;
 }
 
 /* ─── Chat Messages ────────────────────────────────── */
@@ -905,6 +874,283 @@ function getStyles(): string {
 .askpage-tab-chip-check {
   font-size: 11px;
   font-weight: 700;
+}
+
+/* ─── History Header Button ──────────────────── */
+
+.askpage-history-btn {
+  margin-right: 2px;
+}
+
+.askpage-history-btn.active {
+  background: rgba(167, 139, 250, 0.2) !important;
+  color: #a78bfa !important;
+}
+
+/* ─── History Sidebar Close Button ────────────── */
+
+.askpage-history-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.askpage-history-close:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+/* ─── History Sidebar ────────────────────────── */
+
+.askpage-history-sidebar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 260px;
+  background: #181a22;
+  border-right: 1px solid rgba(255,255,255,0.08);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  animation: slideInHistory 0.2s ease;
+}
+
+@keyframes slideInHistory {
+  from { transform: translateX(-100%); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+.askpage-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 12px 8px;
+}
+
+.askpage-history-header h4 {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0;
+  color: #f3f4f6;
+}
+
+.askpage-history-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: rgba(167, 139, 250, 0.12);
+  border: 1px solid rgba(167, 139, 250, 0.25);
+  border-radius: 6px;
+  color: #a78bfa;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.askpage-history-new:hover {
+  background: rgba(167, 139, 250, 0.2);
+}
+
+.askpage-history-search {
+  margin: 4px 12px 8px;
+  padding: 7px 10px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  color: #f3f4f6;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.askpage-history-search:focus { outline: none; border-color: #a78bfa; }
+.askpage-history-search::placeholder { color: #6b7280; }
+
+.askpage-history-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+
+.askpage-history-item {
+  display: flex;
+  align-items: stretch;
+  border-radius: 8px;
+  margin-bottom: 2px;
+  transition: background 0.12s;
+}
+
+.askpage-history-item:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+.askpage-history-item.active {
+  background: rgba(167, 139, 250, 0.1);
+}
+
+.askpage-history-item-main {
+  flex: 1;
+  padding: 8px 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: #e5e7eb;
+  min-width: 0;
+}
+
+.askpage-history-item-title {
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.askpage-history-item-meta {
+  font-size: 10px;
+  color: #6b7280;
+  margin-top: 2px;
+}
+
+.askpage-history-item-delete {
+  background: none;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 16px;
+  opacity: 0;
+  transition: all 0.12s;
+  display: flex;
+  align-items: center;
+}
+
+.askpage-history-item:hover .askpage-history-item-delete {
+  opacity: 0.6;
+}
+
+.askpage-history-item-delete:hover {
+  opacity: 1 !important;
+  color: #ef4444;
+}
+
+.askpage-history-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+/* ─── Thinking Block ─────────────────────────── */
+
+.askpage-thinking-block {
+  align-self: flex-start;
+  max-width: 90%;
+  margin-bottom: 4px;
+  border-radius: 10px;
+  background: rgba(167, 139, 250, 0.06);
+  border: 1px solid rgba(167, 139, 250, 0.12);
+  overflow: hidden;
+  animation: fadeInMsg 0.2s ease;
+}
+
+.askpage-thinking-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #a78bfa;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.askpage-thinking-summary::-webkit-details-marker { display: none; }
+
+.askpage-thinking-summary::before {
+  content: '▶';
+  font-size: 8px;
+  transition: transform 0.15s;
+}
+
+details[open] > .askpage-thinking-summary::before {
+  transform: rotate(90deg);
+}
+
+.askpage-thinking-content {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #9ca3af;
+  line-height: 1.5;
+  border-top: 1px solid rgba(167, 139, 250, 0.1);
+  font-style: italic;
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.askpage-thinking-content p { margin: 4px 0; }
+.askpage-thinking-content code {
+  background: rgba(167, 139, 250, 0.1);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.askpage-thinking-spinner {
+  animation: spin 1.5s linear infinite;
+}
+
+/* ─── Welcome Prompt Buttons ──────────────────── */
+
+.askpage-welcome-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+  justify-content: center;
+}
+
+.askpage-welcome-prompt-btn {
+  padding: 6px 14px;
+  background: rgba(167, 139, 250, 0.1);
+  border: 1px solid rgba(167, 139, 250, 0.2);
+  border-radius: 20px;
+  color: #a78bfa;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.askpage-welcome-prompt-btn:hover {
+  background: rgba(167, 139, 250, 0.2);
+  border-color: rgba(167, 139, 250, 0.4);
+  transform: translateY(-1px);
 }
 `;
 }

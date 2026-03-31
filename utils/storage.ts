@@ -15,8 +15,25 @@ export interface SystemPrompt {
   prompt: string;
 }
 
+// ─── Chat message used in conversations ─────────────────────
+export interface ChatMsg {
+  role: 'user' | 'assistant' | 'error';
+  content: string;
+  thinking?: string;  // reasoning/thinking content if available
+}
+
+// ─── Conversation stored in chat history ────────────────────
+export interface Conversation {
+  id: string;
+  title: string;
+  createdAt: number;   // timestamp ms
+  updatedAt: number;
+  pageUrl: string;
+  pageTitle: string;
+  messages: ChatMsg[];
+}
+
 // ─── Available template variables for tab grouping prompts ───
-// These are interpolated at runtime before sending to the AI.
 export const PROMPT_VARIABLES: { key: string; description: string }[] = [
   { key: '{tabList}',        description: 'Full JSON array of tabs: [{id, title, url}, ...]' },
   { key: '{tabCount}',       description: 'Total number of tabs' },
@@ -50,10 +67,12 @@ export interface StorageState {
   activeTabGroupPromptId: string;
 
   // Ask Page config
-  askPagePrompts: SystemPrompt[];
-  activeAskPagePromptId: string;
+  askPageSystemPrompt: string;        // always-active system prompt
+  askPagePrompts: SystemPrompt[];     // quick prompts (reusable templates)
   askPagePanelWidth: number;
   askPagePersistChat: boolean;
+  askPageAutoDeleteDays: number;      // 0 = never, 7/14/30/custom
+  askPageMaxConversations: number;    // max stored conversations
 }
 
 export const DEFAULT_TAB_GROUP_PROMPT: SystemPrompt = {
@@ -113,66 +132,36 @@ export const ALL_BUILTIN_PROMPTS: SystemPrompt[] = [
   BUILTIN_CONTEXT_PROMPT
 ];
 
-// ─── Built-in Ask Page Prompts ──────────────────────────────
-
-export const DEFAULT_ASK_PAGE_PROMPT: SystemPrompt = {
-  id: 'askpage-default',
-  name: 'Default',
-  prompt: `You are a helpful AI assistant. The user is viewing a webpage and wants to ask questions about it.
+// ─── Default Ask Page System Prompt ─────────────────────────
+export const DEFAULT_ASK_PAGE_SYSTEM_PROMPT = `You are a helpful AI assistant. The user is viewing a webpage and may ask questions about it or any attached tab context.
 
 Page Title: {pageTitle}
 Page URL: {pageUrl}
 
-Answer the user's questions clearly and concisely. Use markdown formatting when helpful.`
-};
+Answer the user's questions clearly and concisely. Use markdown formatting for well-structured responses.`;
 
-export const BUILTIN_SUMMARIZE_PROMPT: SystemPrompt = {
-  id: 'askpage-summarize',
-  name: 'Summarize',
-  prompt: `You are a skilled summarizer. Analyze the provided page content and give a clear, structured summary.
-
-Page: {pageTitle}
-URL: {pageUrl}
-
-Content:
-{pageContent}
-
-Provide a comprehensive summary using markdown formatting with headings, bullet points, and key takeaways.`
-};
-
-export const BUILTIN_QA_PROMPT: SystemPrompt = {
-  id: 'askpage-qa',
-  name: 'Q&A Expert',
-  prompt: `You are an expert Q&A assistant. The user is reading a webpage and needs detailed answers.
-
-Page: {pageTitle}
-URL: {pageUrl}
-
-Content:
-{pageContent}
-
-Answer questions with precision. Quote relevant parts of the content when applicable. Use markdown for formatting.`
-};
-
-export const BUILTIN_EXPLAIN_PROMPT: SystemPrompt = {
-  id: 'askpage-explain',
-  name: 'Explain Simply',
-  prompt: `You are an expert at making complex topics simple. The user is reading a webpage and wants simplified explanations.
-
-Page: {pageTitle}
-URL: {pageUrl}
-
-Content:
-{pageContent}
-
-Explain concepts from this page in simple, easy-to-understand language. Use analogies and examples where helpful.`
-};
-
-export const ALL_BUILTIN_ASK_PAGE_PROMPTS: SystemPrompt[] = [
-  DEFAULT_ASK_PAGE_PROMPT,
-  BUILTIN_SUMMARIZE_PROMPT,
-  BUILTIN_QA_PROMPT,
-  BUILTIN_EXPLAIN_PROMPT,
+// ─── Built-in Ask Page Quick Prompts (reusable templates) ───
+export const BUILTIN_ASK_PAGE_QUICK_PROMPTS: SystemPrompt[] = [
+  {
+    id: 'askpage-summarize',
+    name: 'Summarize',
+    prompt: `Please provide a comprehensive summary of this page. Include key points, main arguments, and important details. Structure with headings and bullet points.`
+  },
+  {
+    id: 'askpage-qa',
+    name: 'Q&A',
+    prompt: `Based on the content of this page, answer the following question in detail. Quote relevant parts when applicable.`
+  },
+  {
+    id: 'askpage-explain',
+    name: 'Explain Simply',
+    prompt: `Explain the main concepts from this page in simple, easy-to-understand language. Use analogies and examples where helpful.`
+  },
+  {
+    id: 'askpage-extract',
+    name: 'Extract Key Info',
+    prompt: `Extract and list the most important information from this page: key facts, dates, names, numbers, and actionable items. Present as a structured list.`
+  },
 ];
 
 export const defaultState: StorageState = {
@@ -194,10 +183,12 @@ export const defaultState: StorageState = {
   activeTabGroupPromptId: 'builtin-default',
 
   // Ask Page defaults
-  askPagePrompts: ALL_BUILTIN_ASK_PAGE_PROMPTS.map(p => ({ ...p })),
-  activeAskPagePromptId: 'askpage-default',
+  askPageSystemPrompt: DEFAULT_ASK_PAGE_SYSTEM_PROMPT,
+  askPagePrompts: BUILTIN_ASK_PAGE_QUICK_PROMPTS.map(p => ({ ...p })),
   askPagePanelWidth: 420,
   askPagePersistChat: false,
+  askPageAutoDeleteDays: 0,       // 0 = never auto-delete
+  askPageMaxConversations: 100,
 };
 
 export const AppStorage = {
@@ -210,9 +201,9 @@ export const AppStorage = {
       merged.tabGroupPrompts = [{ ...DEFAULT_TAB_GROUP_PROMPT }];
       merged.activeTabGroupPromptId = DEFAULT_TAB_GROUP_PROMPT.id;
     }
-    if (!merged.askPagePrompts || merged.askPagePrompts.length === 0) {
-      merged.askPagePrompts = [{ ...DEFAULT_ASK_PAGE_PROMPT }];
-      merged.activeAskPagePromptId = DEFAULT_ASK_PAGE_PROMPT.id;
+    // Ensure system prompt exists
+    if (!merged.askPageSystemPrompt) {
+      merged.askPageSystemPrompt = DEFAULT_ASK_PAGE_SYSTEM_PROMPT;
     }
     return merged;
   },
@@ -230,11 +221,63 @@ export const AppStorage = {
       ?? state.tabGroupPrompts[0]
       ?? DEFAULT_TAB_GROUP_PROMPT;
   },
-  getActiveAskPagePrompt: async (): Promise<SystemPrompt> => {
+  // ─── Full state export (for import/export) ──────────
+  exportAll: async (): Promise<string> => {
     const state = await AppStorage.get();
-    return state.askPagePrompts.find(p => p.id === state.activeAskPagePromptId)
-      ?? state.askPagePrompts[0]
-      ?? DEFAULT_ASK_PAGE_PROMPT;
+    const conversations = await ConversationStorage.loadAll();
+    return JSON.stringify({ settings: state, conversations }, null, 2);
+  },
+  importAll: async (json: string): Promise<void> => {
+    const data = JSON.parse(json);
+    if (data.settings) {
+      await browser.storage.local.set({ appState: { ...defaultState, ...data.settings } });
+    }
+    if (data.conversations && Array.isArray(data.conversations)) {
+      await browser.storage.local.set({ askPageConversations: data.conversations });
+    }
+  }
+};
+
+// ─── Conversation Storage (separate key) ────────────────────
+export const ConversationStorage = {
+  loadAll: async (): Promise<Conversation[]> => {
+    const val = await browser.storage.local.get('askPageConversations');
+    return (val.askPageConversations as Conversation[]) || [];
+  },
+
+  save: async (conversation: Conversation): Promise<void> => {
+    const all = await ConversationStorage.loadAll();
+    const idx = all.findIndex(c => c.id === conversation.id);
+    if (idx >= 0) {
+      all[idx] = conversation;
+    } else {
+      all.unshift(conversation);
+    }
+
+    // Enforce max limit
+    const state = await AppStorage.get();
+    const maxConvs = state.askPageMaxConversations || 100;
+    const trimmed = all.slice(0, maxConvs);
+
+    await browser.storage.local.set({ askPageConversations: trimmed });
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const all = await ConversationStorage.loadAll();
+    const filtered = all.filter(c => c.id !== id);
+    await browser.storage.local.set({ askPageConversations: filtered });
+  },
+
+  clearOld: async (days: number): Promise<number> => {
+    if (days <= 0) return 0;
+    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const all = await ConversationStorage.loadAll();
+    const kept = all.filter(c => c.updatedAt >= cutoff);
+    const removed = all.length - kept.length;
+    if (removed > 0) {
+      await browser.storage.local.set({ askPageConversations: kept });
+    }
+    return removed;
   }
 };
 

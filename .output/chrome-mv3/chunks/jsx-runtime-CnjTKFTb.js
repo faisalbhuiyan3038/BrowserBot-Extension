@@ -39,33 +39,9 @@ Instructions for Assignment:
 4.  **Format:** 1-2 words, Title Case.
 ---
 Input Tab Data:
-{tabList}`}],ee={id:`askpage-default`,name:`Default`,prompt:`You are a helpful AI assistant. The user is viewing a webpage and wants to ask questions about it.
+{tabList}`}],ee=`You are a helpful AI assistant. The user is viewing a webpage and may ask questions about it or any attached tab context.
 
 Page Title: {pageTitle}
 Page URL: {pageUrl}
 
-Answer the user's questions clearly and concisely. Use markdown formatting when helpful.`},S=[ee,{id:`askpage-summarize`,name:`Summarize`,prompt:`You are a skilled summarizer. Analyze the provided page content and give a clear, structured summary.
-
-Page: {pageTitle}
-URL: {pageUrl}
-
-Content:
-{pageContent}
-
-Provide a comprehensive summary using markdown formatting with headings, bullet points, and key takeaways.`},{id:`askpage-qa`,name:`Q&A Expert`,prompt:`You are an expert Q&A assistant. The user is reading a webpage and needs detailed answers.
-
-Page: {pageTitle}
-URL: {pageUrl}
-
-Content:
-{pageContent}
-
-Answer questions with precision. Quote relevant parts of the content when applicable. Use markdown for formatting.`},{id:`askpage-explain`,name:`Explain Simply`,prompt:`You are an expert at making complex topics simple. The user is reading a webpage and wants simplified explanations.
-
-Page: {pageTitle}
-URL: {pageUrl}
-
-Content:
-{pageContent}
-
-Explain concepts from this page in simple, easy-to-understand language. Use analogies and examples where helpful.`}],C={activeProvider:`openai`,activeOpenAIProviderId:`default`,ollamaEndpoint:`http://localhost:11434`,ollamaModel:`llama3`,openaiProviders:[{id:`default`,name:`OpenAI`,endpoint:`https://api.openai.com/v1`,apiKey:``,model:`gpt-4o`,reasoning:!1}],tabGroupPrompts:x.map(e=>({...e})),activeTabGroupPromptId:`builtin-default`,askPagePrompts:S.map(e=>({...e})),activeAskPagePromptId:`askpage-default`,askPagePanelWidth:420,askPagePersistChat:!1},te={get:async()=>{let e=await _.storage.local.get(`appState`);if(!e.appState)return{...C};let t={...C,...e.appState};return(!t.tabGroupPrompts||t.tabGroupPrompts.length===0)&&(t.tabGroupPrompts=[{...b}],t.activeTabGroupPromptId=b.id),(!t.askPagePrompts||t.askPagePrompts.length===0)&&(t.askPagePrompts=[{...ee}],t.activeAskPagePromptId=ee.id),t},set:async e=>{let t=await te.get();await _.storage.local.set({appState:{...t,...e}})},getActiveOpenAIProvider:async()=>{let e=await te.get();return e.openaiProviders.find(t=>t.id===e.activeOpenAIProviderId)},getActiveTabGroupPrompt:async()=>{let e=await te.get();return e.tabGroupPrompts.find(t=>t.id===e.activeTabGroupPromptId)??e.tabGroupPrompts[0]??b},getActiveAskPagePrompt:async()=>{let e=await te.get();return e.askPagePrompts.find(t=>t.id===e.activeAskPagePromptId)??e.askPagePrompts[0]??ee}};function ne(){return Date.now().toString(36)+Math.random().toString(36).substring(2,7)}var re=o((e=>{var t=Symbol.for(`react.transitional.element`),n=Symbol.for(`react.fragment`);function r(e,n,r){var i=null;if(r!==void 0&&(i=``+r),n.key!==void 0&&(i=``+n.key),`key`in n)for(var a in r={},n)a!==`key`&&(r[a]=n[a]);else r=n;return n=r.ref,{$$typeof:t,type:e,key:i,ref:n===void 0?null:n,props:r}}e.Fragment=n,e.jsx=r,e.jsxs=r})),w=o(((e,t)=>{t.exports=re()}));export{C as a,g as c,v as i,u as l,y as n,ne as o,te as r,_ as s,w as t,c as u};
+Answer the user's questions clearly and concisely. Use markdown formatting for well-structured responses.`,S={activeProvider:`openai`,activeOpenAIProviderId:`default`,ollamaEndpoint:`http://localhost:11434`,ollamaModel:`llama3`,openaiProviders:[{id:`default`,name:`OpenAI`,endpoint:`https://api.openai.com/v1`,apiKey:``,model:`gpt-4o`,reasoning:!1}],tabGroupPrompts:x.map(e=>({...e})),activeTabGroupPromptId:`builtin-default`,askPageSystemPrompt:ee,askPagePrompts:[{id:`askpage-summarize`,name:`Summarize`,prompt:`Please provide a comprehensive summary of this page. Include key points, main arguments, and important details. Structure with headings and bullet points.`},{id:`askpage-qa`,name:`Q&A`,prompt:`Based on the content of this page, answer the following question in detail. Quote relevant parts when applicable.`},{id:`askpage-explain`,name:`Explain Simply`,prompt:`Explain the main concepts from this page in simple, easy-to-understand language. Use analogies and examples where helpful.`},{id:`askpage-extract`,name:`Extract Key Info`,prompt:`Extract and list the most important information from this page: key facts, dates, names, numbers, and actionable items. Present as a structured list.`}].map(e=>({...e})),askPagePanelWidth:420,askPagePersistChat:!1,askPageAutoDeleteDays:0,askPageMaxConversations:100},C={get:async()=>{let e=await _.storage.local.get(`appState`);if(!e.appState)return{...S};let t={...S,...e.appState};return(!t.tabGroupPrompts||t.tabGroupPrompts.length===0)&&(t.tabGroupPrompts=[{...b}],t.activeTabGroupPromptId=b.id),t.askPageSystemPrompt||=ee,t},set:async e=>{let t=await C.get();await _.storage.local.set({appState:{...t,...e}})},getActiveOpenAIProvider:async()=>{let e=await C.get();return e.openaiProviders.find(t=>t.id===e.activeOpenAIProviderId)},getActiveTabGroupPrompt:async()=>{let e=await C.get();return e.tabGroupPrompts.find(t=>t.id===e.activeTabGroupPromptId)??e.tabGroupPrompts[0]??b},exportAll:async()=>{let e=await C.get(),t=await te.loadAll();return JSON.stringify({settings:e,conversations:t},null,2)},importAll:async e=>{let t=JSON.parse(e);t.settings&&await _.storage.local.set({appState:{...S,...t.settings}}),t.conversations&&Array.isArray(t.conversations)&&await _.storage.local.set({askPageConversations:t.conversations})}},te={loadAll:async()=>(await _.storage.local.get(`askPageConversations`)).askPageConversations||[],save:async e=>{let t=await te.loadAll(),n=t.findIndex(t=>t.id===e.id);n>=0?t[n]=e:t.unshift(e);let r=(await C.get()).askPageMaxConversations||100,i=t.slice(0,r);await _.storage.local.set({askPageConversations:i})},delete:async e=>{let t=(await te.loadAll()).filter(t=>t.id!==e);await _.storage.local.set({askPageConversations:t})},clearOld:async e=>{if(e<=0)return 0;let t=Date.now()-e*24*60*60*1e3,n=await te.loadAll(),r=n.filter(e=>e.updatedAt>=t),i=n.length-r.length;return i>0&&await _.storage.local.set({askPageConversations:r}),i}};function ne(){return Date.now().toString(36)+Math.random().toString(36).substring(2,7)}var re=o((e=>{var t=Symbol.for(`react.transitional.element`),n=Symbol.for(`react.fragment`);function r(e,n,r){var i=null;if(r!==void 0&&(i=``+r),n.key!==void 0&&(i=``+n.key),`key`in n)for(var a in r={},n)a!==`key`&&(r[a]=n[a]);else r=n;return n=r.ref,{$$typeof:t,type:e,key:i,ref:n===void 0?null:n,props:r}}e.Fragment=n,e.jsx=r,e.jsxs=r})),w=o(((e,t)=>{t.exports=re()}));export{S as a,g as c,v as i,u as l,y as n,ne as o,C as r,_ as s,w as t,c as u};

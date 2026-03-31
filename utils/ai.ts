@@ -1,4 +1,5 @@
 import { AppStorage, StorageState, OpenAIProvider } from './storage';
+import { getLanguageModel } from './askPageAI';
 
 export type TabInfo = {
   id: number;
@@ -143,17 +144,32 @@ function parseJSON(text: string): any {
 // ─── Chrome AI (Prompt API) ──────────────────────────────────
 
 async function generateWithChromeAI(prompt: string): Promise<string> {
-  const ai = (globalThis as any).ai;
-  if (!ai?.languageModel) {
-    throw new Error('Chrome AI Prompt API is not available. Enable it in chrome://flags.');
+  const lm = getLanguageModel();
+  if (!lm) {
+    throw new Error('Chrome AI Prompt API is not available. Make sure you are using Chrome 131+ and enable the following flags in chrome://flags:\n• #optimization-guide-on-device-model → Enabled\n• #prompt-api-for-gemini-nano-multimodal-input → Enabled');
   }
 
-  const { available } = await ai.languageModel.capabilities();
-  if (available !== 'readily') {
-    throw new Error('Chrome AI model is not readily available.');
+  let availability: string;
+  if (typeof lm.availability === 'function') {
+    availability = await lm.availability();
+  } else if (typeof lm.capabilities === 'function') {
+    const caps = await lm.capabilities();
+    availability = caps.available;
+  } else {
+    throw new Error('No availability method found on LanguageModel.');
   }
 
-  const session = await ai.languageModel.create();
+  // Accept both old ('readily') and new ('available') return values
+  if (availability === 'no' || availability === 'unavailable') {
+    throw new Error(`Chrome AI model is not available (status: "${availability}"). Requires desktop with 22 GB+ free space and a supported GPU.`);
+  }
+
+  if (['after-download', 'downloadable', 'downloading'].includes(availability)) {
+    throw new Error('Chrome AI model needs to be downloaded first. Please go to the Ask Page or Settings and trigger the download.');
+  }
+
+  // 'readily' or 'available' — proceed
+  const session = await lm.create();
   try {
     return await session.prompt(prompt);
   } finally {

@@ -1,8 +1,19 @@
-import { streamChatWithAI, ChatMessage } from '../utils/askPageAI';
-import { AppStorage, AIProviderType } from '../utils/storage';
+import { streamChatWithAI, checkChromeAIStatus, downloadChromeAIModel, ChatMessage } from '../utils/askPageAI';
+import { AppStorage, ConversationStorage, AIProviderType } from '../utils/storage';
 
 export default defineBackground(() => {
   console.log('BrowserBot background ready', { id: browser.runtime.id });
+
+  // ─── Auto-clean old conversations on startup ──────────────
+  (async () => {
+    try {
+      const state = await AppStorage.get();
+      if (state.askPageAutoDeleteDays > 0) {
+        const removed = await ConversationStorage.clearOld(state.askPageAutoDeleteDays);
+        if (removed > 0) console.log(`Cleaned ${removed} old conversations`);
+      }
+    } catch (_) {}
+  })();
 
   // ─── Message Router ────────────────────────────────────────
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -13,12 +24,17 @@ export default defineBackground(() => {
 
     if (message.type === 'ASK_PAGE_CHAT') {
       handleAskPageChat(message, sender);
-      return false; // we respond via streaming port, not sendResponse
+      return false;
+    }
+
+    if (message.type === 'ASK_PAGE_CHAT_ABORT') {
+      // Handled within handleAskPageChat via abortListener
+      return false;
     }
 
     if (message.type === 'GET_TAB_LIST') {
       handleGetTabList().then(sendResponse);
-      return true; // async sendResponse
+      return true;
     }
 
     if (message.type === 'GET_TAB_CONTENT') {
@@ -31,8 +47,12 @@ export default defineBackground(() => {
       return false;
     }
 
+    // ─── Chat persistence (session-based for cross-tab sync) ───
     if (message.type === 'SAVE_CHAT') {
-      browser.storage.session.set({ askPageChat: message.messages });
+      browser.storage.session.set({ askPageChat: message.messages }).then(() => {
+        // Broadcast update to all tabs except sender
+        broadcastToTabs('CHAT_UPDATED', { messages: message.messages }, sender.tab?.id);
+      });
       return false;
     }
 
@@ -45,11 +65,51 @@ export default defineBackground(() => {
 
     if (message.type === 'CLEAR_CHAT') {
       browser.storage.session.remove('askPageChat');
+      broadcastToTabs('CHAT_UPDATED', { messages: [] }, sender.tab?.id);
       return false;
+    }
+
+    // ─── Conversation history CRUD ───
+    if (message.type === 'SAVE_CONVERSATION') {
+      ConversationStorage.save(message.conversation).then(() => sendResponse(true)).catch(() => sendResponse(false));
+      return true;
+    }
+
+    if (message.type === 'LOAD_CONVERSATIONS') {
+      ConversationStorage.loadAll().then(sendResponse).catch(() => sendResponse([]));
+      return true;
+    }
+
+    if (message.type === 'DELETE_CONVERSATION') {
+      ConversationStorage.delete(message.id).then(() => sendResponse(true)).catch(() => sendResponse(false));
+      return true;
+    }
+
+    // ─── Chrome AI status & download ───
+    if (message.type === 'CHECK_CHROME_AI') {
+      checkChromeAIStatus().then(sendResponse);
+      return true;
+    }
+
+    if (message.type === 'DOWNLOAD_CHROME_AI') {
+      handleDownloadChromeAI(sender).then(sendResponse).catch(err => sendResponse({ error: err.message }));
+      return true;
     }
 
     return false;
   });
+
+  // ─── Broadcast message to all tabs (except excludeTabId) ──
+  async function broadcastToTabs(type: string, data: any, excludeTabId?: number) {
+    try {
+      const tabs = await browser.tabs.query({});
+      for (const tab of tabs) {
+        if (tab.id && tab.id !== excludeTabId) {
+          browser.tabs.sendMessage(tab.id, { type, ...data }).catch(() => {});
+        }
+      }
+    } catch (_) {}
+  }
 
   // ─── Toggle Ask Page overlay on active tab ─────────────────
   async function handleToggleAskPage(message: any) {
@@ -63,12 +123,11 @@ export default defineBackground(() => {
         pageUrl: tab.url || ''
       });
     } catch (_) {
-      // Content script might not be injected yet
       console.warn('Could not send TOGGLE_ASK_PAGE to tab', tab.id);
     }
   }
 
-  // ─── Stream chat to content script via port ────────────────
+  // ─── Stream chat to content script ────────────────────────
   async function handleAskPageChat(message: any, sender: browser.Runtime.MessageSender) {
     const tabId = sender.tab?.id;
     if (!tabId) return;
@@ -79,7 +138,6 @@ export default defineBackground(() => {
 
     const abortController = new AbortController();
 
-    // Listen for abort from content script
     const abortListener = (msg: any, abortSender: browser.Runtime.MessageSender) => {
       if (msg.type === 'ASK_PAGE_CHAT_ABORT' && abortSender.tab?.id === tabId) {
         abortController.abort();
@@ -95,6 +153,12 @@ export default defineBackground(() => {
         onChunk: (chunk: string) => {
           browser.tabs.sendMessage(tabId, {
             type: 'ASK_PAGE_CHAT_CHUNK',
+            chunk
+          }).catch(() => {});
+        },
+        onThinkingChunk: (chunk: string) => {
+          browser.tabs.sendMessage(tabId, {
+            type: 'ASK_PAGE_CHAT_THINKING',
             chunk
           }).catch(() => {});
         }
@@ -115,6 +179,20 @@ export default defineBackground(() => {
     }
   }
 
+  // ─── Chrome AI Model Download ─────────────────────────────
+  async function handleDownloadChromeAI(sender: browser.Runtime.MessageSender) {
+    const tabId = sender.tab?.id;
+    await downloadChromeAIModel((progress) => {
+      if (tabId) {
+        browser.tabs.sendMessage(tabId, {
+          type: 'CHROME_AI_DOWNLOAD_PROGRESS',
+          progress
+        }).catch(() => {});
+      }
+    });
+    return { success: true };
+  }
+
   // ─── Return list of open tabs ──────────────────────────────
   async function handleGetTabList() {
     const tabs = await browser.tabs.query({ currentWindow: true });
@@ -130,8 +208,6 @@ export default defineBackground(() => {
 
   // ─── Extract content from a tab (placeholder) ─────────────
   async function handleGetTabContent(tabId: number) {
-    // Placeholder: just return basic tab info
-    // User will provide proper extraction logic later
     try {
       const tab = await browser.tabs.get(tabId);
       return {
