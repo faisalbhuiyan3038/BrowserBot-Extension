@@ -280,6 +280,20 @@ function getStyles(): string {
   border-radius: 3px;
 }
 
+.askpage-msg-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.askpage-msg-wrapper.user {
+  align-items: flex-end;
+}
+
+.askpage-msg-wrapper.assistant,
+.askpage-msg-wrapper.error {
+  align-items: flex-start;
+}
+
 .askpage-msg {
   max-width: 90%;
   padding: 10px 14px;

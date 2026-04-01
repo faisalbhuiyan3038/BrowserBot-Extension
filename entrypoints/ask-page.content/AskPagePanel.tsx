@@ -97,8 +97,29 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
       }
     });
 
+    // Listen for storage changes to sync settings instantly
+    const handleStorageChange = (changes: any, area: string) => {
+      if (area === 'local' && changes.appState?.newValue) {
+        const state = changes.appState.newValue;
+        setProviderType(state.activeProvider);
+        setOpenaiProviders(state.openaiProviders);
+        setSelectedOpenAIId(state.activeOpenAIProviderId);
+        setOllamaModel(state.ollamaModel);
+        setSystemPrompt(state.askPageSystemPrompt);
+        setQuickPrompts(state.askPagePrompts);
+        setPanelWidth(state.askPagePanelWidth || 420);
+        setPersistChat(state.askPagePersistChat || false);
+        setExtractionAlgorithm(state.pageExtractionAlgorithm || 1);
+      }
+    };
+    browser.storage.onChanged.addListener(handleStorageChange);
+
     // Load conversation history
     loadConversations();
+
+    return () => {
+      browser.storage.onChanged.removeListener(handleStorageChange);
+    };
   }, []);
 
   const loadConversations = () => {
@@ -326,6 +347,16 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
 
     chatMessages.push({ role: 'user', content: text });
 
+    console.groupCollapsed('BrowserBot: Sending AI Prompt');
+    console.log('Provider:', providerType);
+    console.log('Extraction Algorithm (1=Text, 2=Optimized, 3=Full):', extractionAlgorithm);
+    console.log('Complete Prompt Messages:', JSON.parse(JSON.stringify(chatMessages)));
+    if (currentTabAttached) {
+      console.log('Current Page Content Context Size:', currentTabContent.length);
+      console.log('Current Page Content Snippet:', currentTabContent.substring(0, 500) + '...');
+    }
+    console.groupEnd();
+
     // Update UI
     setMessages(prev => [
       ...prev,
@@ -359,11 +390,14 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    e.stopPropagation();
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
   };
+
+  const stopPropagation = (e: React.UIEvent) => e.stopPropagation();
 
   // ─── Quick prompt selection ─────────────────────────
   const handleQuickPromptSelect = (id: string) => {
@@ -704,44 +738,44 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
         </div>
       ) : (
         <div className="askpage-messages" ref={messagesContainerRef} onScroll={handleMessagesScroll}>
-          {messages.map((msg, i) => (
-            <div key={i}>
-              {/* Show thinking block for assistant messages */}
-              {msg.role === 'assistant' && msg.thinking && (
-                <details className="askpage-thinking-block">
-                  <summary className="askpage-thinking-summary">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/>
-                      <path d="M12 16v-4M12 8h.01"/>
-                    </svg>
-                    Thinking process
-                  </summary>
-                  <div className="askpage-thinking-content" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.thinking) }} />
-                </details>
-              )}
-              <div
-                className={`askpage-msg ${msg.role}`}
-                {...(msg.role === 'assistant' ? {
-                  dangerouslySetInnerHTML: { __html: renderMarkdown(msg.content) || '<span style="opacity:0.3">Thinking…</span>' }
-                } : {})}
-              >
-                {msg.role !== 'assistant' ? msg.content : undefined}
+          {messages.map((msg, i) => {
+            const isLastMessage = i === messages.length - 1;
+            const isCurrentlyStreaming = isStreaming && isLastMessage && msg.role === 'assistant';
+            const showLiveThinking = isCurrentlyStreaming && thinkingContent;
+            
+            return (
+              <div key={i} className={`askpage-msg-wrapper ${msg.role}`}>
+                {/* Show thinking block for assistant messages (finished or streaming) */}
+                {msg.role === 'assistant' && (msg.thinking || showLiveThinking) && (
+                  <details className="askpage-thinking-block" open={showLiveThinking ? thinkingExpanded : undefined}>
+                    <summary 
+                      className="askpage-thinking-summary" 
+                      onClick={showLiveThinking ? (e) => { e.preventDefault(); setThinkingExpanded(!thinkingExpanded); } : undefined}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={showLiveThinking ? "askpage-thinking-spinner" : ""}>
+                        <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/>
+                        {!showLiveThinking && <path d="M12 16v-4M12 8h.01"/>}
+                      </svg>
+                      {showLiveThinking ? 'Thinking…' : 'Thinking process'}
+                    </summary>
+                    <div 
+                      className="askpage-thinking-content" 
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown((showLiveThinking ? thinkingContent : msg.thinking) as string) }} 
+                    />
+                  </details>
+                )}
+                
+                <div
+                  className={`askpage-msg ${msg.role}`}
+                  {...(msg.role === 'assistant' ? {
+                    dangerouslySetInnerHTML: { __html: renderMarkdown(msg.content) || '<span style="opacity:0.3">Thinking…</span>' }
+                  } : {})}
+                >
+                  {msg.role !== 'assistant' ? msg.content : undefined}
+                </div>
               </div>
-            </div>
-          ))}
-
-          {/* Live thinking display during streaming */}
-          {isStreaming && thinkingContent && (
-            <details className="askpage-thinking-block" open={thinkingExpanded}>
-              <summary className="askpage-thinking-summary" onClick={(e) => { e.preventDefault(); setThinkingExpanded(!thinkingExpanded); }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="askpage-thinking-spinner">
-                  <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/>
-                </svg>
-                Thinking…
-              </summary>
-              <div className="askpage-thinking-content" dangerouslySetInnerHTML={{ __html: renderMarkdown(thinkingContent) }} />
-            </details>
-          )}
+            );
+          })}
 
           {isStreaming && !thinkingContent && messages[messages.length - 1]?.content === '' && (
             <div className="askpage-typing">
@@ -784,7 +818,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
       </div>
 
       {/* Input Area */}
-      <div className="askpage-input-area">
+      <div className="askpage-input-area" onKeyDown={stopPropagation} onKeyUp={stopPropagation} onKeyPress={stopPropagation}>
         <textarea
           ref={inputRef}
           className="askpage-input"

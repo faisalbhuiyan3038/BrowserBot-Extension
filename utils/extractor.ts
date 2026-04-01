@@ -40,6 +40,7 @@ export async function extractPageContent(
   algorithm: ExtractionAlgorithm,
   options?: { characterLimit?: number; promptLength?: number }
 ): Promise<ExtractionResult> {
+  console.log(`[BrowserBot] Starting page extraction using Algorithm ${algorithm}`);
   const charLimit = options?.characterLimit || TRUNC_CONFIG.characterLimit;
   const promptLen = options?.promptLength || 0;
   const maxContentLength = charLimit - promptLen - 50;
@@ -264,104 +265,334 @@ function harpaExtractPageText(html: string): string | null {
 // ── YouTube Transcript Extraction ──
 
 async function harpaExtractYouTubeTranscript(): Promise<string | null> {
-  if (!location.href.includes('youtube.com/watch')) return null;
+  if (!location.href.includes('youtube.com/watch') && !location.href.includes('youtube.com/shorts/')) return null;
 
   try {
-    let transcriptData = await fetchTranscriptFromInitialData();
-    if (!transcriptData || !transcriptData.transcript) {
-      transcriptData = await fetchTranscriptWithXSRF(location.href);
-    }
-    if (!transcriptData || !transcriptData.transcript) return null;
+    const data = await extractL(location.href);
+    if (!data || !data.transcript || !data.transcript.length) return null;
 
-    const lines = transcriptData.transcript.map((item: any) => {
-      const time = formatTime(item.s);
-      return `[${time}] ${item.t}`;
-    });
+    let output = `YouTube Transcript\nTitle: ${data.title}\nURL: ${data.url}\n\n`;
 
-    return `YouTube Transcript (${transcriptData.language || 'en'})\n\n` + lines.join('\n');
-  } catch (_) {
-    return null;
-  }
-}
+    const normalized = data.transcript
+        .map((item: any) => {
+            let ts = "";
+            let txt = "";
 
-async function fetchTranscriptFromInitialData(): Promise<any> {
-  const scripts = document.querySelectorAll('script');
-  for (const script of scripts) {
-    const text = script.textContent || '';
-    if (text.includes('ytInitialPlayerResponse')) {
-      try {
-        const match = text.match(/ytInitialPlayerResponse\s*=\s*({.+?});/s);
-        if (match) {
-          const data = JSON.parse(match[1]);
-          const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-          if (tracks && tracks.length) {
-            const track = tracks.find((t: any) => t.vssId?.startsWith('.en'))
-              || tracks.find((t: any) => t.vssId === 'a.en')
-              || tracks[0];
-            return await fetchCaptionTrack(track);
-          }
+            if (Array.isArray(item)) {
+                ts = item[0] || "";
+                txt = item[1] || "";
+            } else if (item.tStartMs !== undefined) {
+                const totalSec = Math.floor(item.tStartMs / 1000);
+                const min = Math.floor(totalSec / 60);
+                ts = `${min}:${(totalSec % 60).toString().padStart(2, "0")}`;
+                txt = (item.segs || []).map((s: any) => s.utf8).join(" ").replace(/\n/g, " ");
+            }
+
+            return { timestamp: ts, text: txt.trim() };
+        })
+        .filter((item: any) => item.text.length > 0);
+
+    let lastTimestamp = "";
+    const lines = normalized.map((item: any) => {
+        if (item.timestamp && item.timestamp !== lastTimestamp) {
+            lastTimestamp = item.timestamp;
+            return `\n(${item.timestamp}) ${item.text}`;
         }
-      } catch (_) { }
-    }
-  }
-  return null;
-}
-
-async function fetchTranscriptWithXSRF(videoUrl: string): Promise<any> {
-  try {
-    const videoId = new URL(videoUrl).searchParams.get('v');
-    const pageText = await (await fetch(videoUrl)).text();
-
-    const xsrfMatch = pageText.match(/XSRF_TOKEN["']\s*:\s*["']([^"']+)/);
-    if (!xsrfMatch) return null;
-
-    const xsrf = xsrfMatch[1];
-    const pbjUrl = `https://www.youtube.com/watch?v=${videoId}&bpctr=${Math.floor(Date.now() / 1000) + 3000}&pbj=1`;
-
-    const pbjRes = await fetch(pbjUrl, {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: `session_token=${encodeURIComponent(xsrf)}`,
-      credentials: 'include'
+        return ` ${item.text}`;
     });
 
-    const pbjData = await pbjRes.json();
-    const tracks = pbjData?.playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-    if (!tracks || !tracks.length) return null;
-
-    const track = tracks.find((t: any) => t.vssId?.startsWith('.en'))
-      || tracks.find((t: any) => t.vssId === 'a.en')
-      || tracks[0];
-    return await fetchCaptionTrack(track);
-  } catch (_) {
+    output += lines.join("").trim();
+    return output.trim();
+  } catch (err) {
+    console.warn("BrowserBot YT Extraction error:", err);
     return null;
   }
 }
 
-async function fetchCaptionTrack(track: any): Promise<any> {
-  let url = track.baseUrl;
-  if (!url.startsWith('http')) url = 'https://www.youtube.com' + url;
-
-  const res = await fetch(url, { credentials: 'include' });
-  const xmlText = await res.text();
-
-  const parser = new DOMParser();
-  const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
-  const textNodes = xmlDoc.querySelectorAll('text');
-
-  const transcript = Array.from(textNodes).map(node => ({
-    s: parseFloat(node.getAttribute('start') || '0'),
-    d: parseFloat(node.getAttribute('dur') || '0'),
-    t: (node.textContent || '').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/\n/g, ' ')
-  }));
-
-  return { transcript, language: track.name?.simpleText || 'en' };
+function ytExtractTime(t: string) {
+    const e = t.split(":").map(Number);
+    return 2 === e.length ? 1e3 * (60 * e[0] + e[1]) : 3 === e.length ? 1e3 * (3600 * e[0] + 60 * e[1] + e[2]) : 0;
 }
 
-function formatTime(seconds: number): string {
-  const min = Math.floor(seconds / 60);
-  const sec = Math.floor(seconds % 60);
-  return `${min}:${sec.toString().padStart(2, '0')}`;
+const potCache = new Map<string, string>();
+
+async function uGetPotoken(videoId = "") {
+    try {
+        const e = `yt-caption-potoken-${videoId}`;
+        const subtitleBtn = document.querySelector("#movie_player > div.ytp-chrome-bottom > div.ytp-chrome-controls > div.ytp-right-controls > button.ytp-subtitles-button.ytp-button") ||
+                            document.querySelector("#movie_player > div.ytp-chrome-bottom > div.ytp-chrome-controls > div.ytp-right-controls > div.ytp-right-controls-left > button.ytp-subtitles-button.ytp-button");
+
+        if (subtitleBtn) {
+            subtitleBtn.addEventListener("click", async () => {
+                performance.clearResourceTimings();
+                let pot = null;
+                for (let i = 0; i <= 500; i += 50) {
+                    await new Promise(r => setTimeout(r, 50));
+                    const resources = performance.getEntriesByType("resource").filter(res => res.name.includes("/api/timedtext?"));
+                    const last = resources.pop();
+                    if (last) {
+                        pot = new URL(last.name).searchParams.get("pot");
+                        if (pot) break;
+                    }
+                }
+                if (pot) potCache.set(e, pot);
+            }, { once: true });
+            
+            // @ts-ignore
+            subtitleBtn.click();
+            // @ts-ignore
+            subtitleBtn.click();
+        }
+        await new Promise(r => setTimeout(r, 350));
+        return potCache.get(e) || "";
+    } catch {
+        return "";
+    }
+}
+
+async function mGetFromPanel() {
+    const selectors = [
+        'button[aria-label="Show transcript"]',
+        '#button[aria-label="Show transcript"]',
+        'ytd-video-description-transcript-section-renderer #primary-button button',
+        '#primary-button > ytd-button-renderer > yt-button-shape > button'
+    ];
+
+    let btn: any = null;
+    for (const sel of selectors) {
+        btn = document.querySelector(sel);
+        if (btn) break;
+    }
+    if (!btn) return null;
+
+    btn.click();
+
+    const containerSel = "#segments-container > ytd-transcript-segment-renderer";
+
+    const panelLoaded = await new Promise(resolve => {
+        if (document.querySelector(containerSel)) return resolve(true);
+        const observer = new MutationObserver(() => {
+            if (document.querySelector(containerSel)) {
+                observer.disconnect();
+                resolve(true);
+            }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        setTimeout(() => { observer.disconnect(); resolve(false); }, 3000);
+    });
+
+    if (!panelLoaded) return null;
+
+    await new Promise(r => setTimeout(r, 300));
+
+    const segments = document.querySelectorAll(containerSel);
+    if (!segments.length) return null;
+
+    const result: any[] = [];
+    segments.forEach(seg => {
+        const timeEl = seg.querySelector("div.segment-timestamp");
+        const textEl = seg.querySelector("yt-formatted-string");
+        if (timeEl && textEl) {
+            const text = textEl.textContent?.trim();
+            if (text) {
+                result.push({
+                    tStartMs: ytExtractTime(timeEl.textContent?.trim() || "0:00"),
+                    segs: [{ utf8: text }]
+                });
+            }
+        }
+    });
+    return result.length > 0 ? result : null;
+}
+
+function BMapSegments(t: any[], e: string) {
+    if (t.length > 0) {
+        const first = t[0];
+        if (first?.transcriptSegmentRenderer) return t.map(kMapItem);
+        if (first?.segs || void 0 !== first?.tStartMs) return t.filter((item: any) => item.segs).map(MMapItem);
+    }
+    return "regular" === e ? t.map(kMapItem) : t.filter((item: any) => item.segs).map(MMapItem);
+}
+
+function kMapItem(t: any) {
+    const e = t?.transcriptSegmentRenderer;
+    if (!e) return ["", ""];
+    return [
+        e.startTimeText?.simpleText || "",
+        e.snippet?.runs?.map((r: any) => r.text).join(" ") || ""
+    ];
+}
+
+function MMapItem(t: any) {
+    return [
+        (function (ms) {
+            const totalSec = Math.floor(ms / 1000);
+            const min = Math.floor(totalSec / 60);
+            return `${min}:${(totalSec % 60).toString().padStart(2, "0")}`;
+        })(t.tStartMs),
+        (t.segs || []).map((s: any) => s.utf8).join(" ").replace(/\n/g, " ")
+    ];
+}
+
+function qExtractJSON(html: string, key: string) {
+    const regexes = [
+        new RegExp(`window\\["${key}"\\]\\s*=\\s*({[\\s\\S]+?})\\s*;`),
+        new RegExp(`var ${key}\\s*=\\s*({[\\s\\S]+?})\\s*;`),
+        new RegExp(`${key}\\s*=\\s*({[\\s\\S]+?})\\s*;`)
+    ];
+    for (const reg of regexes) {
+        const match = html.match(reg);
+        if (match && match[1]) {
+            try { return JSON.parse(match[1]); } catch {}
+        }
+    }
+    throw new Error(`${key} not found`);
+}
+
+async function DFetchData(ytData: any, dataKey: string, videoId: string, htmlStr: string) {
+    try {
+        let baseUrl: string | null = null;
+        
+        // 1. First, try to extract baseUrl directly from the freshly fetched HTML to avoid stale SPA scripts
+        if (htmlStr) {
+            try {
+                const playerData = qExtractJSON(htmlStr, "ytInitialPlayerResponse");
+                baseUrl = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.[0]?.baseUrl;
+            } catch {}
+            
+            if (!baseUrl) {
+                const match = htmlStr.match(/"baseUrl"\s*:\s*"(https:\/\/www\.youtube\.com\/api\/timedtext[^"]+)"/);
+                if (match) { baseUrl = match[1].replace(/\\u0026/g, "&"); }
+            }
+        }
+
+        // 2. Only fallback to current DOM script tags if fresh HTML parsing failed
+        if (!baseUrl) {
+            const scripts = document.querySelectorAll("script");
+            for (const script of scripts) {
+                const text = script.textContent || "";
+                if (text.includes("ytInitialPlayerResponse")) {
+                    const match = text.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});\s*(?:var|let|const|<\/script>)/s);
+                    if (match) {
+                        try {
+                            const playerData = JSON.parse(match[1]);
+                            const tracks = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+                            if (tracks?.[0]?.baseUrl) { baseUrl = tracks[0].baseUrl; break; }
+                        } catch {}
+                    }
+                }
+                if (text.includes('"baseUrl"') && text.includes("timedtext")) {
+                    const match = text.match(/"baseUrl"\s*:\s*"(https:\/\/www\.youtube\.com\/api\/timedtext[^"]+)"/);
+                    if (match) { baseUrl = match[1].replace(/\\u0026/g, "&"); break; }
+                }
+            }
+        }
+
+        if (!baseUrl) {
+            const html = await (await fetch(window.location.href, { credentials: 'include' })).text();
+            try {
+                const playerData = qExtractJSON(html, "ytInitialPlayerResponse");
+                baseUrl = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.[0]?.baseUrl;
+            } catch {}
+        }
+
+        if (baseUrl) {
+            const pot = videoId ? await uGetPotoken(videoId) : "";
+            const url = pot ? `${baseUrl}&fmt=json3&pot=${pot}&c=WEB` : `${baseUrl}&fmt=json3`;
+            const res = await fetch(url, { credentials: 'include' });
+            if (res.ok) {
+                const json = await res.json();
+                if (json.events?.length > 0) return json.events;
+            }
+        }
+    } catch {}
+
+    try {
+        const panelData = await mGetFromPanel();
+        if (panelData && panelData.length > 0) return panelData;
+    } catch {}
+
+    const params = ytData?.engagementPanels?.find((p: any) =>
+        p.engagementPanelSectionListRenderer?.content?.continuationItemRenderer?.continuationEndpoint?.getTranscriptEndpoint
+    )?.engagementPanelSectionListRenderer?.content?.continuationItemRenderer?.continuationEndpoint?.getTranscriptEndpoint?.params;
+
+    if (params) {
+        const hl = ytData?.topbar?.desktopTopbarRenderer?.searchbox?.fusionSearchboxRenderer?.config?.webSearchboxConfig?.requestLanguage || "en";
+        const visitorData = ytData?.responseContext?.webResponseContextExtensionData?.ytConfigData?.visitorData || "";
+
+        const body = {
+            context: {
+                client: {
+                    hl: hl,
+                    visitorData: visitorData,
+                    clientName: "WEB",
+                    clientVersion: "2." + Array.from({length:30}, (_,i) => {
+                        const d = new Date(); d.setDate(d.getDate()-i); return d.toISOString().split("T")[0].replace(/-/g,"");
+                    })[Math.floor(Math.random()*30)] + ".00.00"
+                },
+                request: { useSsl: true }
+            },
+            params: params
+        };
+
+        try {
+            const res = await fetch("https://www.youtube.com/youtubei/v1/get_transcript?prettyPrint=false", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+                credentials: 'include'
+            });
+            if (res.ok) {
+                const json = await res.json();
+                const segments = json.actions?.[0]?.updateEngagementPanelAction?.content?.transcriptRenderer?.content?.transcriptSearchPanelRenderer?.body?.transcriptSegmentListRenderer?.initialSegments || [];
+                if (segments.length > 0) return segments;
+            }
+        } catch {}
+    }
+
+    throw new Error("No captions found.");
+}
+
+async function extractL(url: string) {
+    const isShort = /youtube\.com\/shorts\//.test(url);
+    let videoId = "";
+    try {
+        videoId = isShort ? url.split("/shorts/")[1].split(/[/?#&]/)[0] : new URLSearchParams(new URL(url).search).get("v") || "";
+    } catch {
+        videoId = new URLSearchParams(window.location.search).get("v") || "";
+    }
+    
+    if (!videoId) throw new Error("No video ID found");
+
+    let title = "Untitled Video";
+    let ytData, dataKey, resolvedType;
+
+    const html = await (await fetch(isShort ? `https://www.youtube.com/watch?v=${videoId}` : url, { credentials: 'include' })).text();
+
+    try {
+        ytData = qExtractJSON(html, "ytInitialData");
+        resolvedType = "regular";
+        dataKey = "ytInitialData";
+    } catch {
+        try {
+            ytData = qExtractJSON(html, "ytInitialPlayerResponse");
+            resolvedType = "shorts";
+            dataKey = "ytInitialPlayerResponse";
+        } catch {
+            ytData = null;
+            resolvedType = "regular";
+            dataKey = "";
+        }
+    }
+
+    title = ytData?.videoDetails?.title || ytData?.playerOverlays?.playerOverlayRenderer?.videoDetails?.playerOverlayVideoDetailsRenderer?.title?.simpleText || "Untitled Video";
+
+    const rawSegments = await DFetchData(ytData, dataKey, videoId, html);
+    if (!rawSegments || !rawSegments.length) throw new Error("No transcript available");
+
+    const transcript = BMapSegments(rawSegments, resolvedType);
+
+    return { title, transcript, url };
 }
 
 // ═══════════════════════════════════════════════════════
