@@ -536,8 +536,9 @@ export default function App() {
               <label className="field-label">Panel Width (px)</label>
               <input
                 type="number"
-                value={state.askPagePanelWidth}
-                onChange={e => save({ askPagePanelWidth: Math.max(320, Math.min(800, parseInt(e.target.value) || 420)) })}
+                value={state.askPagePanelWidth || ''}
+                onChange={e => save({ askPagePanelWidth: e.target.value === '' ? '' as any : parseInt(e.target.value) })}
+                onBlur={e => save({ askPagePanelWidth: Math.max(320, Math.min(800, parseInt(e.target.value) || 420)) })}
                 min={320}
                 max={800}
               />

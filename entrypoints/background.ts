@@ -17,11 +17,19 @@ export default defineBackground(() => {
 
   // ─── Message Router ────────────────────────────────────────
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'OPEN_CHAT_TAB') {
+      browser.tabs.create({ url: browser.runtime.getURL('/chat.html' as any) })
+        .then(() => sendResponse({ success: true }))
+        .catch(err => sendResponse({ error: err.message }));
+      return true;
+    }
+
     if (message.type === 'TOGGLE_ASK_PAGE') {
       handleToggleAskPage(message);
       return false;
     }
 
+    // ─── Chat streaming endpoints ───
     if (message.type === 'ASK_PAGE_CHAT') {
       handleAskPageChat(message, sender);
       return false;
@@ -128,9 +136,10 @@ export default defineBackground(() => {
   }
 
   // ─── Stream chat to content script ────────────────────────
-  async function handleAskPageChat(message: any, sender: browser.Runtime.MessageSender) {
+  async function handleAskPageChat(message: any, sender: any) {
     const tabId = sender.tab?.id;
-    if (!tabId) return;
+    const isExtensionPage = sender.url?.startsWith('chrome-extension://') || sender.url?.startsWith('moz-extension://');
+    if (!tabId && !isExtensionPage) return;
 
     const messages: ChatMessage[] = message.messages;
     const providerType: AIProviderType | undefined = message.providerType;
@@ -138,12 +147,22 @@ export default defineBackground(() => {
 
     const abortController = new AbortController();
 
-    const abortListener = (msg: any, abortSender: browser.Runtime.MessageSender) => {
-      if (msg.type === 'ASK_PAGE_CHAT_ABORT' && abortSender.tab?.id === tabId) {
-        abortController.abort();
+    const abortListener = (msg: any, abortSender: any) => {
+      // Abort either matching tabId, or matching extension page session
+      if (msg.type === 'ASK_PAGE_CHAT_ABORT') {
+        if (isExtensionPage && msg.sessionId === message.sessionId) abortController.abort();
+        else if (!isExtensionPage && abortSender.tab?.id === tabId) abortController.abort();
       }
     };
     browser.runtime.onMessage.addListener(abortListener);
+
+    const dispatchChunk = (payload: any) => {
+      if (isExtensionPage) {
+        browser.runtime.sendMessage(payload).catch(() => {});
+      } else if (tabId) {
+        browser.tabs.sendMessage(tabId, payload).catch(() => {});
+      }
+    };
 
     try {
       await streamChatWithAI(messages, {
@@ -151,28 +170,17 @@ export default defineBackground(() => {
         openaiProviderId,
         signal: abortController.signal,
         onChunk: (chunk: string) => {
-          browser.tabs.sendMessage(tabId, {
-            type: 'ASK_PAGE_CHAT_CHUNK',
-            chunk
-          }).catch(() => {});
+          dispatchChunk({ type: 'ASK_PAGE_CHAT_CHUNK', chunk, sessionId: message.sessionId });
         },
         onThinkingChunk: (chunk: string) => {
-          browser.tabs.sendMessage(tabId, {
-            type: 'ASK_PAGE_CHAT_THINKING',
-            chunk
-          }).catch(() => {});
+          dispatchChunk({ type: 'ASK_PAGE_CHAT_THINKING', chunk, sessionId: message.sessionId });
         }
       });
 
-      await browser.tabs.sendMessage(tabId, {
-        type: 'ASK_PAGE_CHAT_DONE'
-      }).catch(() => {});
+      dispatchChunk({ type: 'ASK_PAGE_CHAT_DONE', sessionId: message.sessionId });
     } catch (err: any) {
       if (err.name !== 'AbortError') {
-        await browser.tabs.sendMessage(tabId, {
-          type: 'ASK_PAGE_CHAT_ERROR',
-          error: err.message || 'Unknown error'
-        }).catch(() => {});
+        dispatchChunk({ type: 'ASK_PAGE_CHAT_ERROR', error: err.message || 'Unknown error', sessionId: message.sessionId });
       }
     } finally {
       browser.runtime.onMessage.removeListener(abortListener);
@@ -180,7 +188,7 @@ export default defineBackground(() => {
   }
 
   // ─── Chrome AI Model Download ─────────────────────────────
-  async function handleDownloadChromeAI(sender: browser.Runtime.MessageSender) {
+  async function handleDownloadChromeAI(sender: any) {
     const tabId = sender.tab?.id;
     await downloadChromeAIModel((progress) => {
       if (tabId) {

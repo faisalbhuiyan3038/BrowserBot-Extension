@@ -10,7 +10,8 @@ interface AskPagePanelProps {
   pageTitle: string;
   pageUrl: string;
   onClose: () => void;
-  onRegisterShow: (cb: () => void) => void;
+  onRegisterShow?: (cb: () => void) => void;
+  isFullScreen?: boolean;
 }
 
 interface AttachedTab {
@@ -26,7 +27,7 @@ marked.setOptions({
   gfm: true,
 });
 
-export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterShow }: AskPagePanelProps) {
+export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterShow, isFullScreen = false }: AskPagePanelProps) {
   // ─── State ──────────────────────────────────────────
   const [minimized, setMinimized] = useState(false);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -173,14 +174,25 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
 
   // ─── Register show callback for toggle ──────────────
   useEffect(() => {
-    onRegisterShow(() => {
-      setMinimized(false);
-    });
+    if (onRegisterShow) {
+      onRegisterShow(() => {
+        setMinimized(false);
+      });
+    }
   }, [onRegisterShow]);
+
+  const sessionIdRef = useRef<string>('');
+  useEffect(() => {
+    if (!sessionIdRef.current) {
+      sessionIdRef.current = crypto.randomUUID();
+    }
+  }, []);
 
   // ─── Listen for streaming chunks + sync ─────────────
   useEffect(() => {
     const listener = (message: any) => {
+      if (message.sessionId && message.sessionId !== sessionIdRef.current) return;
+      
       if (message.type === 'ASK_PAGE_CHAT_CHUNK') {
         streamingContentRef.current += message.chunk;
         setMessages(prev => {
@@ -377,7 +389,8 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
       type: 'ASK_PAGE_CHAT',
       messages: chatMessages,
       providerType,
-      openaiProviderId: selectedOpenAIId
+      openaiProviderId: selectedOpenAIId,
+      sessionId: sessionIdRef.current
     });
   };
 
@@ -578,12 +591,18 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
 
   // ─── Main panel ─────────────────────────────────────
   return (
-    <div className="askpage-panel" style={{ width: panelWidth }} data-panel-width={panelWidth}>
+    <div 
+      className={`askpage-panel ${isFullScreen ? 'fullscreen' : ''}`} 
+      style={isFullScreen ? { width: '100%', height: '100%', borderRadius: 0, border: 'none', right: 0, bottom: 0 } : { width: panelWidth }} 
+      data-panel-width={panelWidth}
+    >
       {/* Resize handle */}
-      <div
-        className={`askpage-resize-handle ${isResizingRef.current ? 'dragging' : ''}`}
-        onMouseDown={handleResizeStart}
-      />
+      {!isFullScreen && (
+        <div
+          className={`askpage-resize-handle ${isResizingRef.current ? 'dragging' : ''}`}
+          onMouseDown={handleResizeStart}
+        />
+      )}
 
 
 
@@ -666,16 +685,31 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
             </svg>
           </button>
         )}
-        <button className="askpage-header-btn" onClick={() => setMinimized(true)} title="Minimize">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M5 12h14"/>
-          </svg>
-        </button>
-        <button className="askpage-header-btn" onClick={onClose} title="Close">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 6L6 18M6 6l12 12"/>
-          </svg>
-        </button>
+
+        {!isFullScreen && (
+          <button className="askpage-header-btn" onClick={() => browser.runtime.sendMessage({ type: 'OPEN_CHAT_TAB' }).catch(() => {})} title="Open in new tab">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+              <polyline points="15 3 21 3 21 9"/>
+              <line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+          </button>
+        )}
+
+        {!isFullScreen && (
+          <>
+            <button className="askpage-header-btn" onClick={() => setMinimized(true)} title="Minimize">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M5 12h14"/>
+              </svg>
+            </button>
+            <button className="askpage-header-btn" onClick={onClose} title="Close">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
+          </>
+        )}
       </div>
 
       {/* Provider & Quick Prompt Controls */}
@@ -791,18 +825,20 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
       {/* Tab Context Bar */}
       <div className="askpage-tabs-bar">
         <span className="askpage-tabs-label">Context</span>
-        <button
-          className={`askpage-current-tab-chip ${currentTabAttached ? 'active' : ''}`}
-          onClick={toggleCurrentTab}
-          title={currentTabAttached ? 'Remove current page context' : 'Add current page as context'}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
-            <polyline points="13 2 13 9 20 9"/>
-          </svg>
-          This Page
-          {currentTabAttached && <span className="askpage-tab-chip-check">✓</span>}
-        </button>
+        {!isFullScreen && (
+          <button
+            className={`askpage-current-tab-chip ${currentTabAttached ? 'active' : ''}`}
+            onClick={toggleCurrentTab}
+            title={currentTabAttached ? 'Remove current page context' : 'Add current page as context'}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+              <polyline points="13 2 13 9 20 9"/>
+            </svg>
+            This Page
+            {currentTabAttached && <span className="askpage-tab-chip-check">✓</span>}
+          </button>
+        )}
         {attachedTabs.map(tab => (
           <div key={tab.id} className="askpage-tab-chip">
             <span className="askpage-tab-chip-title">{tab.title}</span>
@@ -825,7 +861,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
           value={input}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
-          placeholder="Ask about this page…"
+          placeholder={isFullScreen ? "Type a message..." : "Ask about this page…"}
           rows={1}
           disabled={isStreaming}
         />
