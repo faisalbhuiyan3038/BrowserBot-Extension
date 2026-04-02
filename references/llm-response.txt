@@ -1,0 +1,18 @@
+I've built the boilerplate component representing precisely how the extension connects to ChatGPT, Gemini, Grok, and standard Open API services. You or another LLM can take this modular JS class and drop it directly into an extension's background script architecture to utilize the session feature.
+
+You can view the code blueprint here: 
+ai-web-session-reference.js
+
+File References Origin from the Existing Extension:
+To confirm exactly where I extracted this logic from the extension files you provided:
+
+manifest.json: Shows how they sidestep CORS blocking by passing global host_permissions: ["*://*/*"] and inject standard content scripts across domains.
+
+cs-openai.js (ChatGPT's Bot Circumvention): Reveals their anti-bot architecture. The script hooks directly into fetch and HTMLElement.prototype.appendChild within the tcr9i.chat.openai.com Arkose puzzle iframe to capture anti-bot response tokens, ensuring the subsequent request by your background script isn't treated as automated traffic.
+
+pp.js (The core configuration & routing logic):
+
+Extracting chatgpt: { ... } config (located around Line 4882), explicitly calling /api/auth/session to validate authorization and /backend-api/conversation setup.
+Extracting string components like [https://gemini.google.com] (from link rendering components) and observing Google's internal Batchexecute array RPC logic, which natively operates using the auto-provided browser session.
+Identifying the grok endpoints mapped against models like grok-4-1-fast alongside its reliance on standard credentials: "include" calls to grab server-side session CSRF strings automatically on grok.com/sign-in.
+This WebSessionAPI framework combines standard fetch() functions built to inherit existing session credentials and processes their responses uniformly by decoding the ReadableStream sent back as Server-Sent Events (SSE) into your user interfaces. Let me know if you would like any modifications to this blueprint!
