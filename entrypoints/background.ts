@@ -203,9 +203,9 @@ export default defineBackground(() => {
 
   // ─── Return list of open tabs ──────────────────────────────
   async function handleGetTabList() {
-    const tabs = await browser.tabs.query({ currentWindow: true });
+    const tabs = await browser.tabs.query({});
     return tabs
-      .filter(t => t.id != null && t.url && !t.url.startsWith('chrome://') && !t.url.startsWith('chrome-extension://'))
+      .filter(t => t.id != null && t.url && !t.url.startsWith('chrome://') && !t.url.startsWith('about:') && !t.url.startsWith('chrome-extension://') && !t.url.startsWith('moz-extension://'))
       .map(t => ({
         id: t.id!,
         title: t.title || '',

@@ -439,18 +439,34 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   };
 
   const confirmTabSelection = async () => {
+    console.log('BrowserBot: confirmTabSelection triggered', { selectedPickerTabs, attachedTabs });
     for (const tabId of selectedPickerTabs) {
-      if (attachedTabs.some(t => t.id === tabId)) continue;
-      const result = await browser.runtime.sendMessage({ type: 'GET_TAB_CONTENT', tabId });
-      if (result) {
-        setAttachedTabs(prev => [...prev, {
-          id: result.tabId,
-          title: result.title,
-          url: result.url,
-          content: result.content
-        }]);
+      console.log('BrowserBot: Processing tabId:', tabId);
+      if (attachedTabs.some(t => t.id === tabId)) {
+        console.log('BrowserBot: Tab already attached, skipping', tabId);
+        continue;
+      }
+      try {
+        console.log('BrowserBot: Sending GET_TAB_CONTENT for tabId', tabId);
+        const result = await browser.runtime.sendMessage({ type: 'GET_TAB_CONTENT', tabId });
+        console.log('BrowserBot: Received response for GET_TAB_CONTENT', tabId, { result });
+        if (result) {
+          setAttachedTabs(prev => {
+            const newAttached = [...prev, {
+              id: result.tabId,
+              title: result.title,
+              url: result.url,
+              content: result.content
+            }];
+            console.log('BrowserBot: Updated attachedTabs state', newAttached);
+            return newAttached;
+          });
+        }
+      } catch (err) {
+        console.error('BrowserBot: Error getting tab content for tabId', tabId, err);
       }
     }
+    console.log('BrowserBot: Closing tab picker');
     setShowTabPicker(false);
   };
 
