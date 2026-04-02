@@ -4,6 +4,13 @@ import { AppStorage, ConversationStorage, AIProviderType } from '../utils/storag
 export default defineBackground(() => {
   console.log('BrowserBot background ready', { id: browser.runtime.id });
 
+  // ─── Keyboard command handler ───────────────────────
+  browser.commands.onCommand.addListener((command) => {
+    if (command === 'toggle_ask_page') {
+      handleToggleAskPage({});
+    }
+  });
+
   // ─── Auto-clean old conversations on startup ──────────────
   (async () => {
     try {

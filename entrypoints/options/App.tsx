@@ -553,6 +553,17 @@ export default function App() {
                   <span className="toggle-hint">Keep active chat when navigating. Chat syncs in real-time across tabs.</span>
                 </div>
               </label>
+              <label className="toggle-row-modal" style={{ marginTop: 16 }}>
+                <input
+                  type="checkbox"
+                  checked={state.askPageFloatingButton}
+                  onChange={e => save({ askPageFloatingButton: e.target.checked })}
+                />
+                <div>
+                  <span className="toggle-title">Show Floating Button</span>
+                  <span className="toggle-hint">Display a draggable floating button on every page to quickly open Ask Page. Tap to open, drag to reposition.</span>
+                </div>
+              </label>
             </div>
 
             {/* Page Extraction Algorithm */}

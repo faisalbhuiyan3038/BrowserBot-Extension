@@ -75,6 +75,7 @@ export interface StorageState {
   askPageAutoDeleteDays: number;      // 0 = never, 7/14/30/custom
   askPageMaxConversations: number;    // max stored conversations
   pageExtractionAlgorithm: ExtractionAlgorithm;  // 1=Text, 2=Optimized, 3=Full
+  askPageFloatingButton: boolean;     // show floating button on pages
 }
 
 export const DEFAULT_TAB_GROUP_PROMPT: SystemPrompt = {
@@ -192,6 +193,7 @@ export const defaultState: StorageState = {
   askPageAutoDeleteDays: 0,       // 0 = never auto-delete
   askPageMaxConversations: 100,
   pageExtractionAlgorithm: 1 as ExtractionAlgorithm,  // default: Text Extraction
+  askPageFloatingButton: true,  // default: show floating button
 };
 
 export const AppStorage = {
