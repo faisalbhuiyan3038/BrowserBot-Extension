@@ -2,7 +2,7 @@
   "name": "browserbot",
   "description": "AI-powered browser automation extension",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "scripts": {
     "dev": "wxt",
@@ -25,6 +25,7 @@
     "@types/html-to-text": "^9.0.4",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@wxt-dev/auto-icons": "^1.1.1",
     "@wxt-dev/module-react": "^1.1.5",
     "typescript": "^5.9.3",
     "wxt": "^0.20.20"
