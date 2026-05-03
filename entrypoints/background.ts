@@ -111,6 +111,22 @@ export default defineBackground(() => {
       return true;
     }
 
+    // ─── DevTools Chat ──────────────────────────────────────────
+    if (message.type === 'OPEN_DEVTOOLS_CHAT_TAB') {
+      handleOpenDevtoolsChatTab().then(sendResponse).catch(err => sendResponse({ error: err.message }));
+      return true;
+    }
+
+    if (message.type === 'GET_ACTIVE_TAB_INFO') {
+      handleGetActiveTabInfo().then(sendResponse).catch(() => sendResponse(null));
+      return true;
+    }
+
+    if (message.type === 'COLLECT_DEVTOOLS_DATA') {
+      handleCollectDevtoolsData(message).then(sendResponse).catch(err => sendResponse({ error: err.message }));
+      return true;
+    }
+
     return false;
   });
 
@@ -277,6 +293,137 @@ export default defineBackground(() => {
         url: '',
         content: `(Could not extract content: ${err.message})`
       };
+    }
+  }
+
+  // ─── DevTools Handlers ──────────────────────────────────────────────
+  async function handleOpenDevtoolsChatTab() {
+    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    const tabId = tabs[0]?.id;
+    const title = tabs[0]?.title || '';
+    const url = tabs[0]?.url || '';
+    const urlParams = new URLSearchParams();
+    if (tabId) urlParams.set('tabId', tabId.toString());
+    if (title) urlParams.set('title', title);
+    if (url) urlParams.set('url', url);
+    
+    await browser.tabs.create({ url: browser.runtime.getURL('/devtools-chat.html?' + urlParams.toString() as any) });
+    return { success: true };
+  }
+
+  async function handleGetActiveTabInfo() {
+    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    return tabs[0] ? { tabId: tabs[0].id, title: tabs[0].title, url: tabs[0].url } : null;
+  }
+
+  async function handleCollectDevtoolsData(message: any) {
+    const { tabId, config } = message;
+    if (!tabId) throw new Error('No tabId provided');
+
+    const debuggee = { tabId };
+    
+    try {
+      await chrome.debugger.attach(debuggee, '1.3');
+    } catch (err: any) {
+      if (err.message?.includes('Another debugger is already attached')) {
+        throw new Error('DEVTOOLS_OPEN');
+      }
+      throw err;
+    }
+
+    try {
+      const data: any = {};
+      
+      // Enable domains
+      await chrome.debugger.sendCommand(debuggee, 'Runtime.enable');
+      if (config.network) await chrome.debugger.sendCommand(debuggee, 'Network.enable');
+      if (config.console) await chrome.debugger.sendCommand(debuggee, 'Console.enable');
+
+      // Execute script to gather DOM, performance, and buffered monkey-patch data
+      const evalRes = await chrome.debugger.sendCommand(debuggee, 'Runtime.evaluate', {
+        expression: `
+          (() => {
+            try {
+              const res = {};
+              if (${!!config.performance}) {
+                const nav = performance.getEntriesByType('navigation')[0];
+                const paint = performance.getEntriesByType('paint');
+                res.performance = {
+                  navTiming: nav ? JSON.parse(JSON.stringify(nav)) : null,
+                  paintTiming: paint ? JSON.parse(JSON.stringify(paint)) : null,
+                  memory: (performance as any).memory ? {
+                    jsHeapSizeLimit: (performance as any).memory.jsHeapSizeLimit,
+                    totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
+                    usedJSHeapSize: (performance as any).memory.usedJSHeapSize
+                  } : null
+                };
+              }
+              if (${!!config.dom}) {
+                const el = document.querySelector(${JSON.stringify(config.domSelector || 'body')});
+                if (el) {
+                  const rect = el.getBoundingClientRect();
+                  res.dom = {
+                    tag: el.tagName,
+                    id: el.id,
+                    className: el.className,
+                    text: el.textContent?.slice(0, 500) || '',
+                    attributes: Array.from(el.attributes).map(a => ({name: a.name, value: a.value})),
+                    rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
+                  };
+                } else {
+                  res.dom = null;
+                }
+              }
+              res.logs = window.__browserbotLogs || [];
+              res.network = window.__browserbotNetwork || [];
+              return JSON.stringify(res);
+            } catch (e) {
+              return JSON.stringify({ logs: [], network: [], error: String(e) });
+            }
+          })()
+        `,
+        returnByValue: true
+      }) as any;
+
+      let pageData: any = {};
+      try {
+        if (evalRes.result?.value) {
+          pageData = JSON.parse(evalRes.result.value);
+        }
+      } catch (e) {
+        console.error("Failed to parse pageData", e);
+      }
+
+      if (config.performance) data.performance = pageData.performance;
+      if (config.dom) data.dom = pageData.dom;
+      if (config.console) data.logs = pageData.logs;
+      if (config.network) data.network = pageData.network;
+
+      // Event listeners for DOM node if requested (requires resolving the node)
+      if (config.dom && config.domIncludeListeners) {
+        try {
+          const doc = await chrome.debugger.sendCommand(debuggee, 'DOM.getDocument', { depth: -1 }) as any;
+          const nodeRes = await chrome.debugger.sendCommand(debuggee, 'DOM.querySelector', {
+            nodeId: doc.root.nodeId,
+            selector: config.domSelector || 'body'
+          }) as any;
+          if (nodeRes.nodeId) {
+            const resolved = await chrome.debugger.sendCommand(debuggee, 'DOM.resolveNode', { nodeId: nodeRes.nodeId }) as any;
+            if (resolved.object?.objectId) {
+              const listeners = await chrome.debugger.sendCommand(debuggee, 'DOMDebugger.getEventListeners', {
+                objectId: resolved.object.objectId
+              }) as any;
+              data.domListeners = listeners.listeners;
+            }
+          }
+        } catch (e) {
+          console.warn("Could not get event listeners", e);
+        }
+      }
+
+      return data;
+    } finally {
+      await chrome.debugger.detach(debuggee).catch(() => {});
     }
   }
 });

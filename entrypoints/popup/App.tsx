@@ -166,6 +166,23 @@ export default function App() {
             </div>
             <svg className="action-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
           </button>
+
+          <button className="action-card" onClick={async () => {
+              await browser.runtime.sendMessage({ type: 'OPEN_DEVTOOLS_CHAT_TAB' });
+              window.close();
+            }}>
+            <div className="action-icon" style={{ background: 'linear-gradient(135deg, #e17055, #fd79a8)' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="4 17 10 11 4 5"/>
+                <line x1="12" y1="19" x2="20" y2="19"/>
+              </svg>
+            </div>
+            <div className="action-text">
+              <span className="action-title">Ask about DevTools</span>
+              <span className="action-desc">Analyze elements, network, performance & console</span>
+            </div>
+            <svg className="action-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
         </div>
       )}
 
