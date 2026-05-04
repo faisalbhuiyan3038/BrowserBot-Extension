@@ -58,6 +58,7 @@ export default function AskDevtoolsPanel() {
 
   const [thinkingContent, setThinkingContent] = useState('');
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
+  const [devtoolsSystemPrompt, setDevtoolsSystemPrompt] = useState('');
 
   // DevTools specific state
   const [config, setConfig] = useState<DevToolsConfig>({
@@ -117,6 +118,7 @@ export default function AskDevtoolsPanel() {
       setOpenaiProviders(state.openaiProviders);
       setSelectedOpenAIId(state.activeOpenAIProviderId);
       setOllamaModel(state.ollamaModel);
+      setDevtoolsSystemPrompt(state.askDevToolsSystemPrompt);
     });
   }, []);
 
@@ -391,7 +393,19 @@ export default function AskDevtoolsPanel() {
   };
 
   const buildSystemPrompt = async () => {
-    let prompt = `You are an expert web developer and debugger AI assistant. The user needs help analyzing DevTools data captured from the inspected webpage.\n\n`;
+    // Substitute variables into the user's custom system prompt
+    const meta = capturedData?.metadata;
+    const preamble = (devtoolsSystemPrompt || 'You are an expert web developer and debugger AI assistant. The user needs help analyzing DevTools data captured from the inspected webpage.')
+      .replace(/{url}/g,                meta?.url           || '')
+      .replace(/{pageTitle}/g,          meta?.title         || '')
+      .replace(/{userAgent}/g,          meta?.userAgent     || '')
+      .replace(/{viewport}/g,           meta?.viewport      || '')
+      .replace(/{framework}/g,          meta?.framework?.trim() || 'Not detected')
+      .replace(/{timestamp}/g,          new Date().toISOString())
+      .replace(/{localStorageKeys}/g,   (meta?.localKeys  || []).join(', ') || '(none)')
+      .replace(/{sessionStorageKeys}/g, (meta?.sessionKeys || []).join(', ') || '(none)');
+
+    let prompt = preamble + '\n\n';
 
     if (capturedData?.metadata) {
       const m = capturedData.metadata;
@@ -550,7 +564,6 @@ export default function AskDevtoolsPanel() {
       prompt += '\n';
     }
 
-    prompt += `Answer with specific, actionable debugging advice. Reference exact values from the data. IMPORTANT: Always format your responses using markdown.\n`;
     return prompt;
   };
 

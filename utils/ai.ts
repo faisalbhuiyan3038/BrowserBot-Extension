@@ -1,5 +1,6 @@
-import { AppStorage, StorageState, OpenAIProvider } from './storage';
+import { AppStorage, StorageState, OpenAIProvider, SystemPrompt } from './storage';
 import { getLanguageModel } from './askPageAI';
+import type { OrganizePlan } from './bookmarks';
 
 export type TabInfo = {
   id: number;
@@ -236,4 +237,81 @@ async function generateWithOpenAI(prompt: string, provider: OpenAIProvider): Pro
   }
   const data = await res.json();
   return data.choices?.[0]?.message?.content ?? '';
+}
+
+// ─── Organize Bookmarks with AI ──────────────────────────────
+
+export interface OrganizeBookmarksOptions {
+  bookmarkListText: string;
+  folderListText: string;
+  domainList: string;
+  bookmarkCount: number;
+  rootFolderCount: number;
+  totalFolderCount: number;
+  restrictToExisting?: boolean;
+  customInstructions?: string;
+}
+
+const BOOKMARK_OUTPUT_FORMAT = `
+
+Return a JSON object with this exact structure:
+{
+  "createFolders": [
+    { "title": "Folder Name", "parentId": "" }
+  ],
+  "moves": [
+    { "bookmarkId": "123", "targetFolderTitle": "Folder Name" }
+  ]
+}
+
+Rules:
+- "createFolders" lists new folders to create (parentId can be empty string for top-level).
+- "moves" lists every bookmark by its id and the title of the folder it should go into.
+- Every bookmark must have exactly one move entry.
+- Only return valid JSON. No markdown, no explanation.`;
+
+export async function organizeBookmarksWithAI(
+  options: OrganizeBookmarksOptions
+): Promise<OrganizePlan> {
+  const state = await AppStorage.get();
+
+  // Interpolate template variables in the user's custom prompt
+  let prompt = (state.bookmarkOrganizePrompt || '')
+    .replace(/{bookmarkList}/g,     options.bookmarkListText)
+    .replace(/{bookmarkCount}/g,    String(options.bookmarkCount))
+    .replace(/{folderList}/g,       options.folderListText)
+    .replace(/{rootFolderCount}/g,  String(options.rootFolderCount))
+    .replace(/{totalFolderCount}/g, String(options.totalFolderCount))
+    .replace(/{domainList}/g,       options.domainList)
+    .replace(/{timestamp}/g,        new Date().toISOString());
+
+  if (options.restrictToExisting) {
+    prompt += `\n\nIMPORTANT: Only use the EXISTING folders listed above. Do NOT create any new folders. All bookmarks must be moved into one of the existing folders only.`;
+  }
+
+  if (options.customInstructions?.trim()) {
+    prompt += '\n\nAdditional instructions:\n' + options.customInstructions.trim();
+  }
+
+  prompt += BOOKMARK_OUTPUT_FORMAT;
+
+  let jsonResponse = '';
+  if (state.activeProvider === 'chrome_ai') {
+    jsonResponse = await generateWithChromeAI(prompt);
+  } else if (state.activeProvider === 'ollama') {
+    jsonResponse = await generateWithOllama(prompt, state);
+  } else if (state.activeProvider === 'openai') {
+    const provider = state.openaiProviders.find(p => p.id === state.activeOpenAIProviderId);
+    if (!provider) throw new Error('No active OpenAI provider configured. Please check Settings.');
+    jsonResponse = await generateWithOpenAI(prompt, provider);
+  }
+
+  const parsed = parseJSON(jsonResponse);
+  if (!parsed || (!parsed.moves && !parsed.createFolders)) {
+    throw new Error(`AI returned invalid format.\n\nRaw response:\n${jsonResponse.substring(0, 400)}`);
+  }
+  return {
+    createFolders: parsed.createFolders || [],
+    moves: parsed.moves || [],
+  };
 }

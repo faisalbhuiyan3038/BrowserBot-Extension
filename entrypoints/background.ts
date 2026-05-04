@@ -113,6 +113,14 @@ export default defineBackground(() => {
 
     // ─── Removed legacy DevTools Chat handling ──────────────────────────
 
+    // ─── Bookmarks ──────────────────────────────────────────────
+    if (message.type === 'GET_BOOKMARKS') {
+      browser.bookmarks.getTree().then(tree => {
+        sendResponse({ tree });
+      }).catch(err => sendResponse({ error: err.message }));
+      return true;
+    }
+
     return false;
   });
 

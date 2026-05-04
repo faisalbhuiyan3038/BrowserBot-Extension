@@ -55,6 +55,29 @@ export const ASK_PAGE_PROMPT_VARIABLES: { key: string; description: string }[] =
   { key: '{tabContext}',    description: 'Content from attached tabs' },
 ];
 
+// ─── Available template variables for Organize Bookmarks prompts ───
+export const BOOKMARK_ORGANIZE_VARIABLES: { key: string; description: string }[] = [
+  { key: '{bookmarkList}',     description: 'Full list of bookmarks: title, URL, folder' },
+  { key: '{bookmarkCount}',    description: 'Total number of bookmarks' },
+  { key: '{folderList}',       description: 'Comma-separated list of existing folder names' },
+  { key: '{rootFolderCount}',  description: 'Number of top-level bookmark folders' },
+  { key: '{totalFolderCount}', description: 'Total number of folders (all levels)' },
+  { key: '{domainList}',       description: 'Unique domains represented in bookmarks' },
+  { key: '{timestamp}',        description: 'ISO timestamp when the popup was opened' },
+];
+
+// ─── Available template variables for Ask DevTools prompts ───
+export const DEVTOOLS_PROMPT_VARIABLES: { key: string; description: string }[] = [
+  { key: '{url}',           description: 'URL of the inspected page' },
+  { key: '{pageTitle}',     description: 'Title of the inspected page' },
+  { key: '{userAgent}',     description: 'Browser user agent string' },
+  { key: '{viewport}',      description: 'Viewport size (e.g. 1280x800)' },
+  { key: '{framework}',     description: 'Detected JS framework (React, Vue, Angular…)' },
+  { key: '{timestamp}',     description: 'ISO timestamp of the capture' },
+  { key: '{localStorageKeys}',   description: 'Comma-separated localStorage keys' },
+  { key: '{sessionStorageKeys}', description: 'Comma-separated sessionStorage keys' },
+];
+
 export interface StorageState {
   // AI provider config
   activeProvider: AIProviderType;
@@ -76,6 +99,12 @@ export interface StorageState {
   askPageMaxConversations: number;    // max stored conversations
   pageExtractionAlgorithm: ExtractionAlgorithm;  // 1=Text, 2=Optimized, 3=Full
   askPageFloatingButton: boolean;     // show floating button on pages
+
+  // Ask DevTools config
+  askDevToolsSystemPrompt: string;    // custom system prompt for the DevTools AI panel
+
+  // Organize Bookmarks config
+  bookmarkOrganizePrompt: string;     // custom system prompt for bookmark organizing
 }
 
 export const DEFAULT_TAB_GROUP_PROMPT: SystemPrompt = {
@@ -143,6 +172,26 @@ Page URL: {pageUrl}
 
 Answer the user's questions clearly and concisely. Use markdown formatting for well-structured responses.`;
 
+// ─── Default Ask DevTools System Prompt ──────────────────────
+export const DEFAULT_DEVTOOLS_SYSTEM_PROMPT = `You are an expert web developer and debugger AI assistant. The user needs help analyzing DevTools data captured from the inspected webpage.
+
+Page: {pageTitle} ({url})
+Viewport: {viewport}
+Framework: {framework}
+Captured at: {timestamp}
+
+Answer with specific, actionable debugging advice. Reference exact values from the data. Always format your responses using markdown.`;
+
+// ─── Default Organize Bookmarks System Prompt ────────────────
+export const DEFAULT_BOOKMARK_ORGANIZE_PROMPT = `You are an expert browser bookmark organizer. The user wants you to reorganize their {bookmarkCount} bookmarks into a clean, logical folder structure.
+
+Existing folders: {folderList}
+
+Here are all the bookmarks to organize:
+{bookmarkList}
+
+Group bookmarks by topic, purpose, or domain. Use short, clear folder names. Each bookmark must be assigned to exactly one folder.`;
+
 // ─── Built-in Ask Page Quick Prompts (reusable templates) ───
 export const BUILTIN_ASK_PAGE_QUICK_PROMPTS: SystemPrompt[] = [
   {
@@ -194,6 +243,12 @@ export const defaultState: StorageState = {
   askPageMaxConversations: 100,
   pageExtractionAlgorithm: 1 as ExtractionAlgorithm,  // default: Text Extraction
   askPageFloatingButton: true,  // default: show floating button
+
+  // Ask DevTools defaults
+  askDevToolsSystemPrompt: DEFAULT_DEVTOOLS_SYSTEM_PROMPT,
+
+  // Organize Bookmarks defaults
+  bookmarkOrganizePrompt: DEFAULT_BOOKMARK_ORGANIZE_PROMPT,
 };
 
 export const AppStorage = {
@@ -209,6 +264,14 @@ export const AppStorage = {
     // Ensure system prompt exists
     if (!merged.askPageSystemPrompt) {
       merged.askPageSystemPrompt = DEFAULT_ASK_PAGE_SYSTEM_PROMPT;
+    }
+    // Ensure DevTools system prompt exists
+    if (!merged.askDevToolsSystemPrompt) {
+      merged.askDevToolsSystemPrompt = DEFAULT_DEVTOOLS_SYSTEM_PROMPT;
+    }
+    // Ensure bookmark organize prompt exists
+    if (!merged.bookmarkOrganizePrompt) {
+      merged.bookmarkOrganizePrompt = DEFAULT_BOOKMARK_ORGANIZE_PROMPT;
     }
     return merged;
   },

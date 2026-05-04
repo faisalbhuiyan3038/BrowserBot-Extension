@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   AppStorage, StorageState, defaultState,
-  AIProviderType, ExtractionAlgorithm, OpenAIProvider, SystemPrompt, PROMPT_VARIABLES, ASK_PAGE_PROMPT_VARIABLES, generateId
+  AIProviderType, ExtractionAlgorithm, OpenAIProvider, SystemPrompt,
+  PROMPT_VARIABLES, ASK_PAGE_PROMPT_VARIABLES, DEVTOOLS_PROMPT_VARIABLES,
+  BOOKMARK_ORGANIZE_VARIABLES, DEFAULT_DEVTOOLS_SYSTEM_PROMPT,
+  DEFAULT_BOOKMARK_ORGANIZE_PROMPT, generateId
 } from '../../utils/storage';
 
-type Page = 'providers' | 'tab-grouping' | 'ask-page';
+type Page = 'providers' | 'tab-grouping' | 'ask-page' | 'ask-devtools' | 'bookmarks';
 
 export default function App() {
   const [state, setState] = useState<StorageState>(defaultState);
@@ -17,6 +20,8 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
   const askPromptTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const devtoolsPromptTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const bookmarksPromptTextareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Chrome AI state
@@ -235,6 +240,22 @@ export default function App() {
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             Ask Page
+          </button>
+
+          <button
+            className={`nav-link ${page === 'ask-devtools' ? 'active' : ''}`}
+            onClick={() => navigateTo('ask-devtools')}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            Ask DevTools
+          </button>
+
+          <button
+            className={`nav-link ${page === 'bookmarks' ? 'active' : ''}`}
+            onClick={() => navigateTo('bookmarks')}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+            Organize Bookmarks
           </button>
         </nav>
 
@@ -659,6 +680,148 @@ export default function App() {
                 </div>
               </div>
             )}
+          </section>
+        )}
+
+        {/* ─── Ask DevTools Settings ─── */}
+        {page === 'ask-devtools' && (
+          <section>
+            <h1>Ask DevTools</h1>
+            <p className="section-desc">Customize the system prompt used by the AI Debugger panel in DevTools. Use variables to inject live capture metadata.</p>
+
+            {/* System Prompt editor */}
+            <div className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <h3 style={{ margin: 0 }}>System Prompt</h3>
+                <button
+                  className="small-btn"
+                  onClick={() => save({ askDevToolsSystemPrompt: DEFAULT_DEVTOOLS_SYSTEM_PROMPT })}
+                  title="Restore default prompt"
+                >
+                  Reset to Default
+                </button>
+              </div>
+              <p className="section-desc" style={{ marginBottom: 8 }}>
+                This prompt is prepended to every DevTools AI conversation. Variables in <code>{'{curly braces}'}</code> are substituted at capture time.
+              </p>
+              <textarea
+                ref={devtoolsPromptTextareaRef}
+                rows={12}
+                value={state.askDevToolsSystemPrompt}
+                onChange={e => save({ askDevToolsSystemPrompt: e.target.value })}
+                placeholder="Enter your DevTools system prompt…"
+                style={{ fontFamily: 'monospace', fontSize: 12 }}
+              />
+              {/* Clickable variable chips */}
+              <div className="var-hint-row" style={{ marginTop: 8 }}>
+                {DEVTOOLS_PROMPT_VARIABLES.map(v => (
+                  <button
+                    key={v.key}
+                    className="var-chip"
+                    type="button"
+                    title={v.description}
+                    onClick={() => {
+                      const ta = devtoolsPromptTextareaRef.current;
+                      const text = state.askDevToolsSystemPrompt;
+                      if (ta) {
+                        const pos = ta.selectionStart ?? text.length;
+                        const newText = text.slice(0, pos) + v.key + text.slice(pos);
+                        save({ askDevToolsSystemPrompt: newText });
+                        requestAnimationFrame(() => {
+                          ta.focus();
+                          ta.selectionStart = ta.selectionEnd = pos + v.key.length;
+                        });
+                      } else {
+                        save({ askDevToolsSystemPrompt: text + v.key });
+                      }
+                    }}
+                  >{v.key}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Variable Reference */}
+            <div className="card var-reference" style={{ marginTop: 16 }}>
+              <h3>Available Variables</h3>
+              <p className="section-desc" style={{ marginBottom: 12 }}>These are replaced with real values from the captured DevTools snapshot at the time you send a message.</p>
+              <div className="var-grid">
+                {DEVTOOLS_PROMPT_VARIABLES.map(v => (
+                  <div key={v.key} className="var-row">
+                    <code className="var-key">{v.key}</code>
+                    <span className="var-desc">{v.description}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+        {/* ─── Organize Bookmarks Settings ─── */}
+        {page === 'bookmarks' && (
+          <section>
+            <h1>Organize Bookmarks</h1>
+            <p className="section-desc">Customize the system prompt used when the AI organizes your bookmarks. Use variables to inject live data about your bookmark collection.</p>
+
+            <div className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <h3 style={{ margin: 0 }}>System Prompt</h3>
+                <button
+                  className="small-btn"
+                  onClick={() => save({ bookmarkOrganizePrompt: DEFAULT_BOOKMARK_ORGANIZE_PROMPT })}
+                  title="Restore default prompt"
+                >
+                  Reset to Default
+                </button>
+              </div>
+              <p className="section-desc" style={{ marginBottom: 8 }}>
+                This prompt is sent to the AI when you click <strong>Analyze &amp; Organize</strong>. Variables in <code>{'{curly braces}'}</code> are substituted with real data at runtime.
+              </p>
+              <textarea
+                ref={bookmarksPromptTextareaRef}
+                rows={12}
+                value={state.bookmarkOrganizePrompt}
+                onChange={e => save({ bookmarkOrganizePrompt: e.target.value })}
+                placeholder="Enter your bookmark organize prompt…"
+                style={{ fontFamily: 'monospace', fontSize: 12 }}
+              />
+              <div className="var-hint-row" style={{ marginTop: 8 }}>
+                {BOOKMARK_ORGANIZE_VARIABLES.map(v => (
+                  <button
+                    key={v.key}
+                    className="var-chip"
+                    type="button"
+                    title={v.description}
+                    onClick={() => {
+                      const ta = bookmarksPromptTextareaRef.current;
+                      const text = state.bookmarkOrganizePrompt;
+                      if (ta) {
+                        const pos = ta.selectionStart ?? text.length;
+                        const newText = text.slice(0, pos) + v.key + text.slice(pos);
+                        save({ bookmarkOrganizePrompt: newText });
+                        requestAnimationFrame(() => {
+                          ta.focus();
+                          ta.selectionStart = ta.selectionEnd = pos + v.key.length;
+                        });
+                      } else {
+                        save({ bookmarkOrganizePrompt: text + v.key });
+                      }
+                    }}
+                  >{v.key}</button>
+                ))}
+              </div>
+            </div>
+
+            <div className="card var-reference" style={{ marginTop: 16 }}>
+              <h3>Available Variables</h3>
+              <p className="section-desc" style={{ marginBottom: 12 }}>Replaced with real values from your bookmark tree when you run Organize.</p>
+              <div className="var-grid">
+                {BOOKMARK_ORGANIZE_VARIABLES.map(v => (
+                  <div key={v.key} className="var-row">
+                    <code className="var-key">{v.key}</code>
+                    <span className="var-desc">{v.description}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </section>
         )}
       </main>
