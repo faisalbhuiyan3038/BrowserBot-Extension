@@ -9,6 +9,10 @@ interface DevToolsConfig {
   network: boolean;
   dom: boolean;
   performance: boolean;
+  networkHeaders: boolean;
+  networkCookies: boolean;
+  networkPayload: boolean;
+  networkResponseBody: boolean;
 }
 
 interface LogEntry {
@@ -54,6 +58,10 @@ export default function AskDevtoolsPanel() {
     network: true,
     dom: true,
     performance: true,
+    networkHeaders: true,
+    networkCookies: true,
+    networkPayload: true,
+    networkResponseBody: true,
   });
   
   const [capturedData, setCapturedData] = useState<DevToolsData | null>(null);
@@ -78,6 +86,7 @@ export default function AskDevtoolsPanel() {
   const streamingContentRef = useRef('');
   const streamingThinkingRef = useRef('');
   const sessionIdRef = useRef<string>(crypto.randomUUID());
+  const harEntriesRef = useRef<any[]>([]);
 
   useEffect(() => {
     AppStorage.get().then(state => {
@@ -221,12 +230,13 @@ export default function AskDevtoolsPanel() {
           browser.devtools.inspectedWindow.eval(`
             (function() {
               try {
-                const nav = performance.getEntriesByType('navigation')[0] as any;
-                const memory = (performance as any).memory ? {
-                  jsHeapSizeLimit: (performance as any).memory.jsHeapSizeLimit,
-                  totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
-                  usedJSHeapSize: (performance as any).memory.usedJSHeapSize
+                const nav = performance.getEntriesByType('navigation')[0];
+                const memory = performance.memory ? {
+                  jsHeapSizeLimit: performance.memory.jsHeapSizeLimit,
+                  totalJSHeapSize: performance.memory.totalJSHeapSize,
+                  usedJSHeapSize: performance.memory.usedJSHeapSize
                 } : null;
+                const timing = performance.timing;
                 let navData = null;
                 if (nav) {
                   navData = {
@@ -236,10 +246,20 @@ export default function AskDevtoolsPanel() {
                     requestStart: nav.requestStart,
                     domInteractive: nav.domInteractive
                   };
+                } else if (timing) {
+                  const start = timing.navigationStart;
+                  navData = {
+                    loadEventEnd: timing.loadEventEnd - start,
+                    domContentLoadedEventEnd: timing.domContentLoadedEventEnd - start,
+                    responseEnd: timing.responseEnd - start,
+                    domInteractive: timing.domInteractive - start
+                  };
                 }
+                const paints = performance.getEntriesByType('paint').map(p => ({ name: p.name, startTime: p.startTime }));
                 return {
                   navTiming: navData,
-                  memory
+                  memory,
+                  paints
                 };
               } catch(e) { return null; }
             })()
@@ -277,6 +297,7 @@ export default function AskDevtoolsPanel() {
           browser.devtools.network.getHAR((har) => resolve(har));
         });
         if (harLog && harLog.entries) {
+          harEntriesRef.current = harLog.entries;
           data.network = harLog.entries.map((entry: any, idx: number) => ({
             id: 'net_' + idx,
             method: entry.request.method,
@@ -285,7 +306,7 @@ export default function AskDevtoolsPanel() {
             duration: Math.round(entry.time),
             mimeType: entry.response.content?.mimeType,
             size: entry.response.content?.size,
-          })).slice(-100);
+          }));
         }
       }
 
@@ -317,7 +338,7 @@ export default function AskDevtoolsPanel() {
     setIsCapturing(false);
   };
 
-  const buildSystemPrompt = () => {
+  const buildSystemPrompt = async () => {
     let prompt = `You are an expert web developer and debugger AI assistant. The user needs help analyzing DevTools data captured from the inspected webpage.\n\n`;
     
     if (capturedData?.logs?.length && selectedLogIds.size > 0) {
@@ -331,10 +352,43 @@ export default function AskDevtoolsPanel() {
     
     if (capturedData?.network?.length && selectedNetworkIds.size > 0) {
       prompt += `## Network Requests\n`;
-      capturedData.network.filter(n => selectedNetworkIds.has(n.id)).forEach(n => {
-        prompt += `${n.method} ${n.url} - Status: ${n.status} (${n.duration}ms) ${n.mimeType || ''} ${n.size ? n.size + 'B' : ''}\n`;
-      });
-      prompt += '\n';
+      const selectedNet = capturedData.network.filter(n => selectedNetworkIds.has(n.id));
+      for (const n of selectedNet) {
+        const rawIdx = parseInt(n.id.split('_')[1]);
+        const rawEntry = harEntriesRef.current[rawIdx];
+        prompt += `### ${n.method} ${n.url} - Status: ${n.status} (${n.duration}ms) ${n.mimeType || ''} ${n.size ? n.size + 'B' : ''}\n`;
+        
+        if (rawEntry) {
+          if (config.networkHeaders) {
+             if (rawEntry.request?.headers?.length) {
+               prompt += `**Request Headers:**\n` + rawEntry.request.headers.map((h: any) => `${h.name}: ${h.value}`).join('\n') + '\n';
+             }
+             if (rawEntry.response?.headers?.length) {
+               prompt += `**Response Headers:**\n` + rawEntry.response.headers.map((h: any) => `${h.name}: ${h.value}`).join('\n') + '\n';
+             }
+          }
+          if (config.networkCookies) {
+             if (rawEntry.request?.cookies?.length) {
+               prompt += `**Cookies:**\n` + rawEntry.request.cookies.map((c: any) => `${c.name}=${c.value}`).join('; ') + '\n';
+             }
+          }
+          if (config.networkPayload && rawEntry.request?.postData?.text) {
+             prompt += `**Request Payload:**\n${rawEntry.request.postData.text}\n`;
+          }
+          if (config.networkResponseBody) {
+             const mime = n.mimeType?.toLowerCase() || '';
+             if (mime.includes('text') || mime.includes('json') || mime.includes('html') || mime.includes('xml')) {
+                try {
+                   const body = await new Promise<string>((resolve) => rawEntry.getContent((content: string) => resolve(content)));
+                   if (body) {
+                     prompt += `**Response Body:**\n\`\`\`\n${body.slice(0, 100000)}${body.length > 100000 ? '\n...[TRUNCATED]' : ''}\n\`\`\`\n`;
+                   }
+                } catch(e) {}
+             }
+          }
+        }
+        prompt += '\n';
+      }
     }
     
     if (includeDom && capturedData?.dom) {
@@ -348,12 +402,12 @@ export default function AskDevtoolsPanel() {
     
     if (includePerf && capturedData?.performance) {
       prompt += `## Page Performance\n`;
-      const nav = capturedData.performance.navTiming;
-      if (nav) {
-        prompt += `Load Event: ${nav.loadEventEnd}ms\nDom Content Loaded: ${nav.domContentLoadedEventEnd}ms\n`;
+      prompt += `Navigation Timing: ${JSON.stringify(capturedData.performance.navTiming, null, 2)}\n`;
+      if (capturedData.performance.paints) {
+        prompt += `Paints: ${JSON.stringify(capturedData.performance.paints)}\n`;
       }
       if (capturedData.performance.memory) {
-        prompt += `JS Heap Used: ${Math.round(capturedData.performance.memory.usedJSHeapSize / 1024 / 1024)}MB / ${Math.round(capturedData.performance.memory.totalJSHeapSize / 1024 / 1024)}MB\n`;
+        prompt += `Memory: ${JSON.stringify(capturedData.performance.memory, null, 2)}\n`;
       }
       prompt += '\n';
     }
@@ -362,9 +416,9 @@ export default function AskDevtoolsPanel() {
     return prompt;
   };
 
-  const copyContext = () => {
+  const copyContext = async () => {
     if (!capturedData) return;
-    const prompt = buildSystemPrompt();
+    const prompt = await buildSystemPrompt();
     navigator.clipboard.writeText(prompt).then(() => {
       setCaptureStatus('✅ Context copied to clipboard!');
       setTimeout(() => setCaptureStatus(''), 2000);
@@ -375,11 +429,15 @@ export default function AskDevtoolsPanel() {
     const text = input.trim();
     if (isStreaming || !text) return;
 
-    const sysContent = buildSystemPrompt();
-    const chatMessages = [
-      { role: 'system', content: sysContent },
-      ...messages.filter(m => m.role !== 'error'),
-      { role: 'user', content: text }
+    let chatMessages = messages;
+    if (!chatMessages.some(m => m.role === 'system')) {
+      const systemPrompt = await buildSystemPrompt();
+      chatMessages = [{ role: 'system', content: systemPrompt }, ...chatMessages];
+    }
+    
+    chatMessages = [
+        ...chatMessages.filter(m => m.role !== 'error'),
+        { role: 'user', content: text }
     ];
 
     setMessages(prev => [...prev, { role: 'user', content: text }, { role: 'assistant', content: '' }]);
@@ -472,13 +530,34 @@ export default function AskDevtoolsPanel() {
             <input type="checkbox" checked={config.dom} onChange={e => setConfig({...config, dom: e.target.checked})} />
             Capture Selected DOM Element ($0)
           </label>
-        </div>
 
-        <div style={{ padding: '12px', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 500, fontSize: '14px', cursor: 'pointer' }}>
-            <input type="checkbox" checked={config.performance} onChange={e => setConfig({...config, performance: e.target.checked})} />
-            Capture Performance Metrics
-          </label>
+          <div style={{ paddingBottom: '10px', borderBottom: '1px solid #374151' }}>
+            <div style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '6px' }}>Performance</div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+              <input type="checkbox" checked={config.performance} onChange={e => setConfig({ ...config, performance: e.target.checked })} />
+              Navigation Timing & Memory
+            </label>
+          </div>
+          
+          <div style={{ paddingBottom: '10px' }}>
+            <div style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '6px' }}>Network Options</div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+              <input type="checkbox" checked={config.networkHeaders} onChange={e => setConfig({ ...config, networkHeaders: e.target.checked })} />
+              Include Headers
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', marginTop: '4px' }}>
+              <input type="checkbox" checked={config.networkCookies} onChange={e => setConfig({ ...config, networkCookies: e.target.checked })} />
+              Include Cookies
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', marginTop: '4px' }}>
+              <input type="checkbox" checked={config.networkPayload} onChange={e => setConfig({ ...config, networkPayload: e.target.checked })} />
+              Include Request Payload
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', marginTop: '4px' }}>
+              <input type="checkbox" checked={config.networkResponseBody} onChange={e => setConfig({ ...config, networkResponseBody: e.target.checked })} />
+              Include Response Body (lazy fetched)
+            </label>
+          </div>
         </div>
 
         <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
