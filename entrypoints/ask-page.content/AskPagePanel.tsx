@@ -131,10 +131,10 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
 
   // ─── Persist chat to session storage (via background) ───
   useEffect(() => {
-    if (persistChat && messages.length > 0) {
+    if (persistChat && messages.length > 0 && !isStreaming) {
       browser.runtime.sendMessage({ type: 'SAVE_CHAT', messages }).catch(() => {});
     }
-  }, [messages, persistChat]);
+  }, [messages, persistChat, isStreaming]);
 
   // ─── Auto-save conversation with debounce ───────────
   useEffect(() => {
@@ -233,7 +233,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
         setMessages(prev => [...prev, { role: 'error', content: message.error }]);
       } else if (message.type === 'CHAT_UPDATED') {
         // Real-time sync from other tabs
-        if (persistChat && message.messages) {
+        if (persistChat && message.messages && !isStreaming) {
           setMessages(message.messages);
         }
       }

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { groupTabsWithAI, TabInfo, ExistingGroup } from '../../utils/ai';
 import { AppStorage, SystemPrompt } from '../../utils/storage';
 
-type View = 'home' | 'group-tabs';
+type View = 'home' | 'group-tabs' | 'devtools-info';
 
 export default function App() {
   const [view, setView] = useState<View>('home');
@@ -167,10 +167,7 @@ export default function App() {
             <svg className="action-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
           </button>
 
-          <button className="action-card" onClick={async () => {
-              await browser.runtime.sendMessage({ type: 'OPEN_DEVTOOLS_CHAT_TAB' });
-              window.close();
-            }}>
+          <button className="action-card" onClick={() => setView('devtools-info')}>
             <div className="action-icon" style={{ background: 'linear-gradient(135deg, #e17055, #fd79a8)' }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="4 17 10 11 4 5"/>
@@ -236,6 +233,43 @@ export default function App() {
               disabled={loading}
             >
               {loading ? 'Processing…' : 'Group Tabs Now'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── DevTools Info sub-view ── */}
+      {view === 'devtools-info' && (
+        <div className="subview">
+          <button className="back-btn" onClick={() => setView('home')}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
+            Back
+          </button>
+          
+          <div className="glass-card">
+            <h3 className="subview-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e17055" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+              AI Debugger
+            </h3>
+            
+            <p style={{ fontSize: '14px', color: '#4b5563', lineHeight: '1.5', marginTop: '10px' }}>
+              BrowserBot now integrates directly with your browser's Developer Tools!
+            </p>
+            
+            <div style={{ backgroundColor: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '16px', marginTop: '16px' }}>
+              <ol style={{ margin: 0, paddingLeft: '20px', color: '#1f2937', fontSize: '14px', lineHeight: '1.6' }}>
+                <li>Right-click anywhere on the page and select <strong>Inspect</strong> (or press <strong>F12</strong>).</li>
+                <li>In the Developer Tools window, find the <strong>AI Debugger</strong> tab (it might be under the <strong>&raquo;</strong> menu).</li>
+                <li>Select elements, check network requests, and ask the AI!</li>
+              </ol>
+            </div>
+            
+            <button
+              className="btn primary-btn"
+              style={{ marginTop: '20px' }}
+              onClick={() => window.close()}
+            >
+              Got it
             </button>
           </div>
         </div>
