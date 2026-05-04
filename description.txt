@@ -1,0 +1,29 @@
+Meet BrowserBot: Your AI-Powered Command Center for the Web
+
+We’ve all been there: twenty tabs open, a dozen bookmarks lost in a digital abyss, and a project deadline looming. You’re toggling between research pages, trying to debug a script, and struggling to keep your workflow from turning into chaos. What if your browser did the heavy lifting for you?
+
+Enter BrowserBot.
+
+BrowserBot isn’t just another AI Chrome extension—it’s an intelligent operating system for your web experience. Think of it as a personal research assistant, a master organizer, and a senior developer, all living right inside your browser sidebar.
+
+Chat with Your Web Content
+
+Stop copy-pasting text into external windows. With our Ask Page feature, you can summon a floating AI assistant that instantly understands the context of your current webpage. Whether you need a quick summary, a deep dive into complex data, or the ability to "attach" multiple tabs for a cross-referenced analysis, BrowserBot handles it all. Powered by your choice of cloud models (like OpenAI) or local AI (Ollama/Gemini Nano) for total privacy, it’s the most versatile AI assistant for Chrome available.
+
+Tame the Tab Chaos
+
+Tired of "tab fatigue"? Let our AI Tab Manager do the spring cleaning. BrowserBot analyzes your open tabs and automatically groups them into logical, color-coded categories, turning a cluttered mess into a streamlined workspace. It’s the smartest way to manage tabs in Chrome and Firefox, ensuring you stay focused on what actually matters.
+
+A Professional’s Secret Weapon
+
+For the developers and power users, we’ve integrated AI DevTools. Get instant, high-level analysis of viewport sizes, framework detection, and storage keys—all interpreted by AI to help you fix bugs faster. Plus, with our AI Smart Bookmark Organizer, your years of cluttered bookmarks are automatically restructured into a searchable, hierarchical layout.
+
+Built for Power & Privacy
+
+Whether you're looking for an AI chrome extension that answers questions or a comprehensive agent to automate your workflow, BrowserBot offers:
+
+Total Control: Customize system prompts and use dynamic variables to build your own automation templates.
+Privacy First: Run models locally so your data never touches the cloud.
+Seamless UX: Lightning-fast keyboard shortcuts (Ctrl+Shift+B/A) and streaming responses that keep up with your brain.
+
+Stop managing your browser and start mastering it. Download BrowserBot today—the ultimate AI browser assistant that finally puts you back in the driver’s seat.
