@@ -1,0 +1,10 @@
+- `[x]` Update `DevToolsConfig` interface and UI state with the new toggles: `networkDisplayMode`, `includeHtml`, `includeCss`, `includeJs`, `cookieValues`, `allowLargeBodies`.
+- `[x]` Update `injectLogger` to handle safe object serialization and capture `Error.stack` and unhandled rejections/errors.
+- `[x]` Update `captureDevToolsData` to evaluate and extract page `metadata` (URL, viewport, framework, storage keys).
+- `[x]` Update HAR extraction to extract `entry._initiator.type`.
+- `[x]` Update `buildSystemPrompt` to prepend the `## Capture Metadata` block.
+- `[x]` Update `buildSystemPrompt` to build the `## Network Summary` table (with SLOW and FAILED flags).
+- `[x]` Update `buildSystemPrompt` Header logic to trim out `Cookie` and `Set-Cookie` headers.
+- `[x]` Update `buildSystemPrompt` Cookie logic to only output values if `cookieValues` toggle is true.
+- `[x]` Update `buildSystemPrompt` Body extraction to respect the 50KB limit and Mime-Type toggles (`html`, `css`, `js`).
+- `[x]` Run `npm run build` to verify code compiles.
