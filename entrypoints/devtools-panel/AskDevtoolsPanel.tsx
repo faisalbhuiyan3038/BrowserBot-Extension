@@ -47,6 +47,46 @@ interface DevToolsData {
   metadata?: any;
 }
 
+/**
+ * Infer the initiator type for a HAR network entry in a cross-browser way.
+ *
+ * Chrome exposes `entry._initiator.type` (e.g. "parser", "script", "other").
+ * Firefox does not populate `_initiator` at all, so we apply a cascade of
+ * heuristics to produce a useful label instead of always returning "unknown":
+ *
+ *  1. _initiator.type        – Chrome/Edge (non-standard but reliable)
+ *  2. _resourceType          – Chrome/Edge DevTools internal type
+ *  3. URL file extension     – works in both browsers
+ *  4. Referer request header – indicates the page that triggered the request
+ *  5. 'other'                – explicit fallback (better than 'unknown')
+ */
+function inferInitiator(entry: any): string {
+  // 1. Chrome _initiator (best signal)
+  if (entry._initiator?.type) return entry._initiator.type;
+
+  // 2. Chrome _resourceType (script, stylesheet, document, xhr, fetch, …)
+  if (entry._resourceType) return entry._resourceType;
+
+  // 3. Infer from URL file extension
+  try {
+    const url = new URL(entry.request.url);
+    const ext = url.pathname.split('.').pop()?.toLowerCase() || '';
+    if (['js', 'mjs', 'ts'].includes(ext)) return 'script';
+    if (['css'].includes(ext)) return 'stylesheet';
+    if (['html', 'htm'].includes(ext)) return 'document';
+    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico', 'avif'].includes(ext)) return 'image';
+    if (['woff', 'woff2', 'ttf', 'eot', 'otf'].includes(ext)) return 'font';
+  } catch (_) {}
+
+  // 4. Presence of a Referer header → triggered by the page (parser or script)
+  const headers: Array<{ name: string; value: string }> = entry.request.headers || [];
+  const hasReferer = headers.some(h => h.name.toLowerCase() === 'referer');
+  if (hasReferer) return 'parser';
+
+  // 5. Explicit non-empty fallback
+  return 'other';
+}
+
 export default function AskDevtoolsPanel() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
@@ -284,6 +324,7 @@ export default function AskDevtoolsPanel() {
             (function() {
               try {
                 const nav = performance.getEntriesByType('navigation')[0];
+                // performance.memory is Chromium-only; null in Firefox
                 const memory = performance.memory ? {
                   jsHeapSizeLimit: performance.memory.jsHeapSizeLimit,
                   totalJSHeapSize: performance.memory.totalJSHeapSize,
@@ -300,19 +341,24 @@ export default function AskDevtoolsPanel() {
                     domInteractive: nav.domInteractive
                   };
                 } else if (timing) {
+                  // Legacy PerformanceTiming fallback (deprecated but universal)
                   const start = timing.navigationStart;
                   navData = {
                     loadEventEnd: timing.loadEventEnd - start,
                     domContentLoadedEventEnd: timing.domContentLoadedEventEnd - start,
                     responseEnd: timing.responseEnd - start,
+                    requestStart: timing.requestStart - start,
                     domInteractive: timing.domInteractive - start
                   };
                 }
-                const paints = performance.getEntriesByType('paint').map(p => ({ name: p.name, startTime: p.startTime }));
+                // first-paint is Chromium-only; Firefox only exposes first-contentful-paint
+                const paints = performance.getEntriesByType('paint').map(p => ({ name: p.name, startTime: Math.round(p.startTime) }));
                 return {
                   navTiming: navData,
                   memory,
-                  paints
+                  paints,
+                  // Surface which fields are browser-limited so the AI is aware
+                  browserNote: !performance.memory ? 'Firefox: memory metrics unavailable; first-paint entry absent (only first-contentful-paint exposed).' : null
                 };
               } catch(e) { return null; }
             })()
@@ -359,7 +405,7 @@ export default function AskDevtoolsPanel() {
             duration: Math.round(entry.time),
             mimeType: entry.response.content?.mimeType,
             size: entry.response.content?.size,
-            initiator: entry._initiator?.type || 'unknown'
+            initiator: inferInitiator(entry)
           }));
         }
       }
@@ -554,8 +600,11 @@ export default function AskDevtoolsPanel() {
     
     if (includePerf && capturedData?.performance) {
       prompt += `## Page Performance\n`;
+      if (capturedData.performance.browserNote) {
+        prompt += `> Note: ${capturedData.performance.browserNote}\n`;
+      }
       prompt += `Navigation Timing: ${JSON.stringify(capturedData.performance.navTiming, null, 2)}\n`;
-      if (capturedData.performance.paints) {
+      if (capturedData.performance.paints?.length) {
         prompt += `Paints: ${JSON.stringify(capturedData.performance.paints)}\n`;
       }
       if (capturedData.performance.memory) {
