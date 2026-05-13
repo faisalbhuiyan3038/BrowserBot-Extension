@@ -1,6 +1,6 @@
 {
   "name": "browserbot",
-  "description": "AI-powered browser automation extension",
+  "description": "Automate Tab Groups, Organize Bookmarks, Ask Tabs all with 3 AI Providers (OpenAI API, Ollama and built-in Chrome AI)",
   "private": true,
   "version": "1.0.1",
   "type": "module",

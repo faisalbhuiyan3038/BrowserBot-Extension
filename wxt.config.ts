@@ -5,7 +5,7 @@ export default defineConfig({
   modules: ['@wxt-dev/module-react','@wxt-dev/auto-icons'],
   manifest: ({ browser }) => ({
     name: 'BrowserBot - AI-Powered Browser Automation',
-    description: 'AI-powered browser automation — group tabs, ask about pages, and more.',
+    description: 'Automate Tab Groups, Organize Bookmarks, Ask Tabs all with 3 AI Providers (OpenAI API, Ollama and built-in Chrome AI)',
     permissions: ['tabs', 'tabGroups', 'storage', 'scripting', 'debugger', 'bookmarks'],
     host_permissions: ['<all_urls>'],
     commands: {
