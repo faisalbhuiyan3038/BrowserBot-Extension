@@ -313,7 +313,13 @@ export default defineContentScript({
       try {
         await browser.runtime.sendMessage({ type: 'TOGGLE_ASK_PAGE' });
       } catch (e) {
-        // Could not reach background script
+        // On Firefox Android, background script may need time to wake up — retry once
+        try {
+          await new Promise(r => setTimeout(r, 200));
+          await browser.runtime.sendMessage({ type: 'TOGGLE_ASK_PAGE' });
+        } catch (_) {
+          console.warn('BrowserBot: Could not reach background script for TOGGLE_ASK_PAGE');
+        }
       }
     }
 

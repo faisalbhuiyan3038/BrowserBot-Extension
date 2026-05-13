@@ -67,7 +67,7 @@ body {
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  background: var(--brand);
+  /* background: var(--brand); */
   color: white;
   display: flex;
   align-items: center;

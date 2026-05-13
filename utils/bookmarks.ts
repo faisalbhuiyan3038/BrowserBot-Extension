@@ -6,6 +6,11 @@ export interface FlatBookmark {
   url: string;
   parentId: string;
   parentTitle: string;
+  /** The id of the direct child of the bookmark root that contains this bookmark
+   * e.g. toolbar_____, unfiled_____, mobile______, '1', '2', '3' */
+  rootParentId: string;
+  /** The title of the root parent folder (e.g. "Bookmarks Toolbar") */
+  rootParentTitle: string;
   depth: number;
   index: number;
 }
@@ -24,16 +29,30 @@ export interface BookmarkTree {
 
 // ─── Walk the browser bookmark tree and flatten it ───────────
 
+/** IDs of the virtual root node across browsers */
+const ROOT_IDS = new Set(['0', 'root________']);
+
 export async function getBookmarkTree(): Promise<BookmarkTree> {
   const tree = await browser.bookmarks.getTree();
   const bookmarks: FlatBookmark[] = [];
   const folders: FlatFolder[] = [];
 
-  function walk(nodes: browser.bookmarks.BookmarkTreeNode[], depth: number, parentTitle = '') {
+  function walk(
+    nodes: browser.bookmarks.BookmarkTreeNode[],
+    depth: number,
+    parentTitle = '',
+    rootParentId = '',
+    rootParentTitle = ''
+  ) {
     for (const node of nodes) {
+      // Determine root parent: direct children of the virtual root become the rootParent
+      const isRootChild = ROOT_IDS.has(node.parentId || '');
+      const myRootParentId    = isRootChild ? node.id    : rootParentId;
+      const myRootParentTitle = isRootChild ? (node.title || '') : rootParentTitle;
+
       if (!node.url) {
         // It's a folder
-        if (node.title && node.id !== '0' && node.id !== 'root________') {
+        if (node.title && !ROOT_IDS.has(node.id)) {
           folders.push({
             id: node.id,
             title: node.title,
@@ -42,7 +61,7 @@ export async function getBookmarkTree(): Promise<BookmarkTree> {
           });
         }
         if (node.children) {
-          walk(node.children, depth + 1, node.title || parentTitle);
+          walk(node.children, depth + 1, node.title || parentTitle, myRootParentId, myRootParentTitle);
         }
       } else {
         // It's a bookmark
@@ -52,6 +71,8 @@ export async function getBookmarkTree(): Promise<BookmarkTree> {
           url: node.url,
           parentId: node.parentId || '',
           parentTitle,
+          rootParentId: myRootParentId,
+          rootParentTitle: myRootParentTitle,
           depth,
           index: node.index ?? 0,
         });
@@ -67,8 +88,14 @@ export async function getBookmarkTree(): Promise<BookmarkTree> {
 
 export function buildBookmarkListText(bookmarks: FlatBookmark[]): string {
   return bookmarks
-    .map(b => `[${b.id}] "${b.title}" | ${b.url} | folder: "${b.parentTitle}"`)
+    .map(b => `[${b.id}] "${b.title}" | ${b.url} | folder: "${b.parentTitle}" | root: "${b.rootParentTitle}"`)
     .join('\n');
+}
+
+/** Returns a deduplicated list of root parent titles present in the bookmark set */
+export function buildRootParentList(bookmarks: FlatBookmark[]): string {
+  const roots = new Set(bookmarks.map(b => b.rootParentTitle).filter(Boolean));
+  return [...roots].join(', ');
 }
 
 export function buildFolderListText(folders: FlatFolder[]): string {
@@ -92,8 +119,8 @@ export function buildDomainList(bookmarks: FlatBookmark[]): string {
 // ─── Apply AI Organization Plan ───────────────────────────────
 
 export interface OrganizePlan {
-  // Folders to create first (parentId = '' means at Bookmarks Bar root)
-  createFolders: { title: string; parentId: string }[];
+  // Folders to create first
+  createFolders: { title: string }[];
   // Moves: bookmark id → target folder id (or title for newly created ones)
   moves: { bookmarkId: string; targetFolderTitle: string }[];
 }
@@ -107,6 +134,7 @@ export interface OrganizeResult {
 export async function applyOrganizePlan(
   plan: OrganizePlan,
   allFolders: FlatFolder[],
+  allBookmarks: FlatBookmark[],
   restrictToExisting: boolean
 ): Promise<OrganizeResult> {
   const result: OrganizeResult = { foldersCreated: 0, bookmarksMoved: 0, errors: [] };
@@ -117,13 +145,43 @@ export async function applyOrganizePlan(
     folderByTitle.set(f.title.toLowerCase(), f.id);
   }
 
-  // Get the "Bookmarks Bar" (or equivalent) to use as default parent for new folders
-  let defaultParentId = '1'; // Chrome: '1' = Bookmarks bar
+  // Build a map of bookmark id → rootParentId so we know where to create new folders
+  const bookmarkRootParent = new Map<string, string>();
+  for (const b of allBookmarks) {
+    bookmarkRootParent.set(b.id, b.rootParentId);
+  }
+
+  // Resolve the root parent for each new folder by looking at which bookmarks will go into it.
+  // This ensures "Developer Tools" gets created inside the same root (Toolbar/Mobile/Other)
+  // as the bookmarks that belong there — not in some arbitrary default location.
+  function resolveParentForFolder(folderTitle: string, fallbackRootId: string): string {
+    const titleLower = folderTitle.toLowerCase();
+    // Find all moves targeting this folder
+    const targetingMoves = plan.moves?.filter(
+      m => m.targetFolderTitle.toLowerCase() === titleLower
+    ) || [];
+    // Pick the rootParentId of the first bookmark that will go here
+    for (const move of targetingMoves) {
+      const root = bookmarkRootParent.get(move.bookmarkId);
+      if (root) return root;
+    }
+    return fallbackRootId;
+  }
+
+  // Determine a fallback root parent (used only if no bookmark context is available)
+  let fallbackRootId = '1';
   try {
     const tree = await browser.bookmarks.getTree();
-    const bar = tree[0]?.children?.find(c => c.id === '1' || c.title === 'Bookmarks bar' || c.title === 'Bookmarks Bar');
-    if (bar) defaultParentId = bar.id;
-  } catch { /* fall back to '1' */ }
+    const rootChildren = tree[0]?.children || [];
+    const bar   = rootChildren.find(c => c.id === '1' || c.id === 'toolbar_____' || /^bookmarks\s*(bar|toolbar)$/i.test(c.title || ''));
+    const other = rootChildren.find(c => c.id === '2' || c.id === 'unfiled_____' || /^(other|unfiled)\s*bookmarks$/i.test(c.title || ''));
+    const mobile = rootChildren.find(c => c.id === '3' || c.id === 'mobile______' || /^mobile\s*bookmarks$/i.test(c.title || ''));
+    // Prefer bar for desktop, mobile if bar doesn't exist, then other
+    if (bar) fallbackRootId = bar.id;
+    else if (mobile) fallbackRootId = mobile.id;
+    else if (other) fallbackRootId = other.id;
+    else if (rootChildren.length > 0) fallbackRootId = rootChildren[0].id;
+  } catch { /* keep '1' */ }
 
   // Create new folders first (unless restricted to existing)
   const createdFolderIds = new Map<string, string>(); // title → id
@@ -137,7 +195,8 @@ export async function applyOrganizePlan(
         continue;
       }
       try {
-        const parentId = f.parentId || defaultParentId;
+        // Derive the correct root parent from where the bookmarks heading here currently live
+        const parentId = resolveParentForFolder(f.title, fallbackRootId);
         const created = await browser.bookmarks.create({ parentId, title: f.title });
         createdFolderIds.set(titleLower, created.id);
         folderByTitle.set(titleLower, created.id);

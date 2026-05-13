@@ -245,6 +245,7 @@ export interface OrganizeBookmarksOptions {
   bookmarkListText: string;
   folderListText: string;
   domainList: string;
+  rootParentList: string;   // e.g. "Bookmarks Toolbar, Mobile Bookmarks"
   bookmarkCount: number;
   rootFolderCount: number;
   totalFolderCount: number;
@@ -254,10 +255,17 @@ export interface OrganizeBookmarksOptions {
 
 const BOOKMARK_OUTPUT_FORMAT = `
 
+IMPORTANT — Root Folder Rules:
+Browsers organize bookmarks under a few fixed "root" parent folders (e.g. "Bookmarks Toolbar", "Other Bookmarks", "Mobile Bookmarks").
+Each bookmark in the list above shows its root parent after "root:". You MUST respect these boundaries:
+- NEVER move a bookmark from one root parent to another (e.g. do NOT move a "Bookmarks Toolbar" bookmark into "Mobile Bookmarks").
+- When you specify a targetFolderTitle, it must be a subfolder that lives (or will be created) inside the same root parent as the bookmark.
+- Do NOT include the root parent folders themselves in "createFolders" or as move targets.
+
 Return a JSON object with this exact structure:
 {
   "createFolders": [
-    { "title": "Folder Name", "parentId": "" }
+    { "title": "Folder Name" }
   ],
   "moves": [
     { "bookmarkId": "123", "targetFolderTitle": "Folder Name" }
@@ -265,8 +273,8 @@ Return a JSON object with this exact structure:
 }
 
 Rules:
-- "createFolders" lists new folders to create (parentId can be empty string for top-level).
-- "moves" lists every bookmark by its id and the title of the folder it should go into.
+- "createFolders" lists new SUBFOLDERS to create (not root-level folders like "Bookmarks Toolbar").
+- "moves" lists every bookmark by its EXACT original id (do NOT modify, shorten, or fabricate IDs) and the title of the subfolder it should go into.
 - Every bookmark must have exactly one move entry.
 - Only return valid JSON. No markdown, no explanation.`;
 
@@ -283,6 +291,7 @@ export async function organizeBookmarksWithAI(
     .replace(/{rootFolderCount}/g,  String(options.rootFolderCount))
     .replace(/{totalFolderCount}/g, String(options.totalFolderCount))
     .replace(/{domainList}/g,       options.domainList)
+    .replace(/{rootParentList}/g,   options.rootParentList)
     .replace(/{timestamp}/g,        new Date().toISOString());
 
   if (options.restrictToExisting) {

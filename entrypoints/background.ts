@@ -5,11 +5,14 @@ export default defineBackground(() => {
   console.log('BrowserBot background ready', { id: browser.runtime.id });
 
   // ─── Keyboard command handler ───────────────────────
-  browser.commands.onCommand.addListener((command) => {
-    if (command === 'toggle_ask_page') {
-      handleToggleAskPage({});
-    }
-  });
+  // Guard: browser.commands is not available on Firefox Android
+  if (browser.commands?.onCommand) {
+    browser.commands.onCommand.addListener((command) => {
+      if (command === 'toggle_ask_page') {
+        handleToggleAskPage({});
+      }
+    });
+  }
 
   // ─── Auto-clean old conversations on startup ──────────────
   (async () => {
@@ -141,14 +144,28 @@ export default defineBackground(() => {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) return;
 
+    const tabId = tab.id;
+    const payload = {
+      type: 'TOGGLE_ASK_PAGE',
+      pageTitle: tab.title || '',
+      pageUrl: tab.url || ''
+    };
+
+    // Try sending the message to the content script
     try {
-      await browser.tabs.sendMessage(tab.id, {
-        type: 'TOGGLE_ASK_PAGE',
-        pageTitle: tab.title || '',
-        pageUrl: tab.url || ''
-      });
+      await browser.tabs.sendMessage(tabId, payload);
     } catch (_) {
-      console.warn('Could not send TOGGLE_ASK_PAGE to tab', tab.id);
+      // Content script might not be ready yet (common on Firefox Android).
+      // Wait a moment and retry once.
+      try {
+        await new Promise(r => setTimeout(r, 300));
+        await browser.tabs.sendMessage(tabId, payload);
+      } catch (_) {
+        // Still failed — content script is not injected.
+        // This can happen on Firefox Android if the tab was opened before
+        // the extension was installed, or on restricted pages.
+        console.warn('Content script not reachable for tab', tabId, '— cannot toggle Ask Page.');
+      }
     }
   }
 

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
+import iconUrl from '../../assets/public/icon.png';
 import { groupTabsWithAI, TabInfo, ExistingGroup, organizeBookmarksWithAI } from '../../utils/ai';
 import { AppStorage, SystemPrompt } from '../../utils/storage';
 import {
-  getBookmarkTree, buildBookmarkListText, buildFolderListText, buildDomainList,
+  getBookmarkTree, buildBookmarkListText, buildFolderListText, buildDomainList, buildRootParentList,
   applyOrganizePlan, FlatBookmark, FlatFolder, OrganizePlan
 } from '../../utils/bookmarks';
 
@@ -148,6 +149,7 @@ export default function App() {
         bookmarkListText: buildBookmarkListText(tree.bookmarks),
         folderListText: buildFolderListText(tree.folders),
         domainList: buildDomainList(tree.bookmarks),
+        rootParentList: buildRootParentList(tree.bookmarks),
         bookmarkCount: tree.bookmarks.length,
         rootFolderCount: tree.folders.filter(f => f.depth === 1).length,
         totalFolderCount: tree.folders.length,
@@ -168,7 +170,7 @@ export default function App() {
     setBLoading(true);
     setBStatus('Applying changes…');
     try {
-      const result = await applyOrganizePlan(bPlan, bFolders, bRestrictExisting);
+      const result = await applyOrganizePlan(bPlan, bFolders, bBookmarks, bRestrictExisting);
       const msg = `✓ Done! ${result.bookmarksMoved} bookmarks moved, ${result.foldersCreated} folders created.` +
         (result.errors.length ? `\n⚠ ${result.errors.length} error(s): ${result.errors[0]}` : '');
       setBStatus(msg);
@@ -225,9 +227,7 @@ export default function App() {
       <header className="popup-header">
         <div className="logo-area">
           <div className="logo-circle">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2a4 4 0 0 1 4 4c0 1.5-.8 2.8-2 3.4V11h3a3 3 0 0 1 3 3v1.5a2.5 2.5 0 0 1-5 0V14h-2v1.5a2.5 2.5 0 0 1-5 0V14H6v1.5a2.5 2.5 0 0 1-5 0V14a3 3 0 0 1 3-3h3V9.4A4 4 0 0 1 12 2z"/>
-            </svg>
+            <img src={iconUrl} alt="BrowserBot" width="28" height="28" style={{ display: 'block', borderRadius: '6px' }} />
           </div>
           <div className="logo-text">
             <h2>BrowserBot</h2>
@@ -262,8 +262,14 @@ export default function App() {
           </button>
 
           <button className="action-card" onClick={async () => {
-              await browser.runtime.sendMessage({ type: 'TOGGLE_ASK_PAGE' });
-              window.close();
+              try {
+                await browser.runtime.sendMessage({ type: 'TOGGLE_ASK_PAGE' });
+              } catch (_) {
+                // Background may not be ready — ignore
+              }
+              // Small delay so background can process the message before popup closes
+              // (especially needed on Firefox Android where popup close is aggressive)
+              setTimeout(() => window.close(), 150);
             }}>
             <div className="action-icon" style={{ background: 'linear-gradient(135deg, #00b894, #55efc4)' }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

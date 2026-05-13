@@ -3,8 +3,8 @@ import { defineConfig } from 'wxt';
 // See https://wxt.dev/api/config.html
 export default defineConfig({
   modules: ['@wxt-dev/module-react','@wxt-dev/auto-icons'],
-  manifest: {
-    name: 'BrowserBot',
+  manifest: ({ browser }) => ({
+    name: 'BrowserBot - AI-Powered Browser Automation',
     description: 'AI-powered browser automation — group tabs, ask about pages, and more.',
     permissions: ['tabs', 'tabGroups', 'storage', 'scripting', 'debugger', 'bookmarks'],
     host_permissions: ['<all_urls>'],
@@ -23,6 +23,13 @@ export default defineConfig({
         },
         description: 'Toggle Ask Page on current tab'
       }
-    }
-  }
+    },
+    ...(browser === 'firefox' ? {
+      browser_specific_settings: {
+        gecko: {
+          id: 'browserbot@faisalbhuiyan.com'
+        }
+      }
+    } : {})
+  })
 });

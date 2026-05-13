@@ -69,11 +69,44 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const streamingContentRef = useRef('');
   const streamingThinkingRef = useRef('');
   const isResizingRef = useRef(false);
   const userScrolledUpRef = useRef(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ─── Mobile keyboard viewport adjustment ────────────
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const handleResize = () => {
+      clearTimeout(timeoutId);
+      // Debounce slightly to prevent intermediate state glitches on Firefox Android
+      timeoutId = setTimeout(() => {
+        // Only apply the visual viewport constraint if it's significantly smaller
+        // than the window height (indicating the keyboard is open).
+        if (vv.height < window.innerHeight - 50) {
+          setViewportHeight(vv.height);
+        } else {
+          setViewportHeight(null);
+        }
+      }, 50);
+    };
+
+    vv.addEventListener('resize', handleResize);
+    // Removed 'scroll' listener: it caused severe re-render glitches on Firefox 
+    // Android because typing triggers auto-scroll to the caret.
+    return () => {
+      clearTimeout(timeoutId);
+      vv.removeEventListener('resize', handleResize);
+    };
+  }, []);
 
   // ─── Load storage state ─────────────────────────────
   useEffect(() => {
@@ -608,8 +641,17 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   // ─── Main panel ─────────────────────────────────────
   return (
     <div 
+      ref={panelRef}
       className={`askpage-panel ${isFullScreen ? 'fullscreen' : ''}`} 
-      style={isFullScreen ? { width: '100%', height: '100%', borderRadius: 0, border: 'none', right: 0, bottom: 0 } : { width: panelWidth }} 
+      style={isFullScreen 
+        ? { width: '100%', height: '100%', borderRadius: 0, border: 'none', right: 0, bottom: 0 } 
+        : { 
+            width: panelWidth,
+            // On mobile, constrain panel height to the visual viewport so the
+            // input stays visible when the on-screen keyboard opens
+            ...(viewportHeight != null ? { height: viewportHeight + 'px', bottom: 'auto', top: (window.visualViewport?.offsetTop ?? 0) + 'px' } : {})
+          }
+      } 
       data-panel-width={panelWidth}
     >
       {/* Resize handle */}
@@ -877,6 +919,12 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
           value={input}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
+          onFocus={() => {
+            // On mobile, scroll the input into view after the keyboard finishes animating
+            setTimeout(() => {
+              inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 300);
+          }}
           placeholder={isFullScreen ? "Type a message..." : "Ask about this page…"}
           rows={1}
           disabled={isStreaming}
