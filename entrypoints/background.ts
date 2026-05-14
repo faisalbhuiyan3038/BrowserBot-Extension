@@ -4,6 +4,92 @@ import { AppStorage, ConversationStorage, AIProviderType } from '../utils/storag
 export default defineBackground(() => {
   console.log('BrowserBot background ready', { id: browser.runtime.id });
 
+  // ─── Set up CORS override for Ollama ─────────────────────────────
+  // The only reliable cross-platform fix is to set the Origin header
+  // to exactly match the request domain (e.g. http://127.0.0.1 or http://localhost)
+  // because Ollama whitelists local origins by default.
+  async function updateOllamaCorsRule() {
+    try {
+      const state = await AppStorage.get();
+      const endpoint = state.ollamaEndpoint || 'http://localhost:11434';
+      const url = new URL(endpoint);
+      const domain = url.hostname;
+      const fakeOrigin = `http://${domain}`;
+
+      // 1. Chrome MV3 (DNR)
+      if (browser.declarativeNetRequest && browser.declarativeNetRequest.updateDynamicRules) {
+        await browser.declarativeNetRequest.updateDynamicRules({
+          removeRuleIds: [1],
+          addRules: [
+            {
+              id: 1,
+              priority: 1,
+              action: {
+                type: 'modifyHeaders',
+                requestHeaders: [{ header: 'Origin', operation: 'set', value: fakeOrigin }]
+              },
+              condition: {
+                requestDomains: [domain],
+                resourceTypes: ['xmlhttprequest', 'other']
+              }
+            }
+          ]
+        });
+        console.log('BrowserBot: Updated DNR rule for Ollama domain:', domain);
+      }
+
+      // 2. Firefox MV2 (webRequest)
+      if (browser.webRequest && browser.webRequest.onBeforeSendHeaders) {
+        // Remove existing listener if any
+        if ((globalThis as any).ollamaWebRequestFallback) {
+          browser.webRequest.onBeforeSendHeaders.removeListener((globalThis as any).ollamaWebRequestFallback);
+        }
+        
+        const listener = (details: any) => {
+          const reqUrl = details.url || '';
+          if (!reqUrl.includes('/api/chat') && !reqUrl.includes('/api/generate') && !reqUrl.includes('/api/tags')) {
+            return {};
+          }
+          // If Origin header exists, modify it; otherwise add it
+          let modified = false;
+          const requestHeaders = (details.requestHeaders || []).map((h: any) => {
+            if (h.name.toLowerCase() === 'origin') {
+              modified = true;
+              return { ...h, value: fakeOrigin };
+            }
+            return h;
+          });
+          if (!modified) {
+            requestHeaders.push({ name: 'Origin', value: fakeOrigin });
+          }
+          return { requestHeaders };
+        };
+        (globalThis as any).ollamaWebRequestFallback = listener;
+        
+        browser.webRequest.onBeforeSendHeaders.addListener(
+          listener,
+          { urls: ['<all_urls>'] },
+          ['blocking', 'requestHeaders']
+        );
+        console.log('BrowserBot: Updated webRequest listener for Ollama domain:', domain);
+      }
+    } catch (e: any) {
+      console.warn('BrowserBot: Failed to update Ollama CORS rule:', e.message);
+    }
+  }
+
+  // Run on startup
+  updateOllamaCorsRule();
+
+  // Update on settings change
+  if (browser.storage && browser.storage.local && browser.storage.local.onChanged) {
+    browser.storage.local.onChanged.addListener((changes) => {
+      if (changes.appState) {
+        updateOllamaCorsRule();
+      }
+    });
+  }
+
   // ─── Keyboard command handler ───────────────────────
   // Guard: browser.commands is not available on Firefox Android
   if (browser.commands?.onCommand) {

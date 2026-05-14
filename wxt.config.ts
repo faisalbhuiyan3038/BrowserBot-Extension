@@ -6,7 +6,9 @@ export default defineConfig({
   manifest: ({ browser }) => ({
     name: 'BrowserBot - AI-Powered Browser Automation',
     description: 'Automate Tab Groups, Organize Bookmarks, Ask Tabs all with 3 AI Providers (OpenAI API, Ollama and built-in Chrome AI)',
-    permissions: ['tabs', 'tabGroups', 'storage', 'scripting', 'debugger', 'bookmarks'],
+    permissions: browser === 'firefox'
+      ? ['tabs', 'tabGroups', 'storage', 'scripting', 'debugger', 'bookmarks', 'webRequest', 'webRequestBlocking']
+      : ['tabs', 'tabGroups', 'storage', 'scripting', 'debugger', 'bookmarks', 'declarativeNetRequest', 'declarativeNetRequestWithHostAccess'],
     host_permissions: ['<all_urls>'],
     commands: {
       _execute_action: {

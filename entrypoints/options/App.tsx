@@ -31,6 +31,10 @@ export default function App() {
   const [chromeAIDownloading, setChromeAIDownloading] = useState(false);
   const [chromeAIProgress, setChromeAIProgress] = useState(0);
 
+  // Ollama state
+  const [ollamaModels, setOllamaModels] = useState<{name: string}[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
+
   useEffect(() => {
     AppStorage.get().then(data => {
       setState(data);
@@ -43,7 +47,27 @@ export default function App() {
     if (state.activeProvider === 'chrome_ai') {
       checkChromeAI();
     }
+    if (state.activeProvider === 'ollama') {
+      fetchOllamaModels(state.ollamaEndpoint);
+    }
   }, [state.activeProvider]);
+
+  const fetchOllamaModels = async (endpoint: string) => {
+    if (!endpoint) return;
+    setFetchingModels(true);
+    try {
+      const cleanEndpoint = endpoint.replace(/\/+$/, '');
+      const response = await fetch(`${cleanEndpoint}/api/tags`);
+      if (response.ok) {
+        const data = await response.json();
+        setOllamaModels(data.models || []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch Ollama models:', e);
+    } finally {
+      setFetchingModels(false);
+    }
+  };
 
   const checkChromeAI = () => {
     setChromeAIStatus('checking');
@@ -298,11 +322,33 @@ export default function App() {
 
             {state.activeProvider === 'ollama' && (
               <div className="card">
-                <h3>Ollama Configuration</h3>
-                <label className="field-label">Endpoint</label>
-                <input type="text" value={state.ollamaEndpoint} onChange={e => save({ ollamaEndpoint: e.target.value })} placeholder="http://localhost:11434" />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ margin: 0 }}>Ollama Configuration</h3>
+                  <button className="small-btn" onClick={() => fetchOllamaModels(state.ollamaEndpoint)} disabled={fetchingModels}>
+                    {fetchingModels ? 'Fetching...' : 'Refresh Models'}
+                  </button>
+                </div>
+                <label className="field-label" style={{ marginTop: 12 }}>Endpoint</label>
+                <input
+                  type="text"
+                  value={state.ollamaEndpoint}
+                  onChange={e => save({ ollamaEndpoint: e.target.value })}
+                  onBlur={() => fetchOllamaModels(state.ollamaEndpoint)}
+                  placeholder="http://localhost:11434"
+                />
                 <label className="field-label">Model</label>
-                <input type="text" value={state.ollamaModel} onChange={e => save({ ollamaModel: e.target.value })} placeholder="llama3" />
+                <input
+                  type="text"
+                  value={state.ollamaModel}
+                  onChange={e => save({ ollamaModel: e.target.value })}
+                  placeholder="llama3"
+                  list="ollama-model-list"
+                />
+                <datalist id="ollama-model-list">
+                  {ollamaModels.map(m => (
+                    <option key={m.name} value={m.name} />
+                  ))}
+                </datalist>
               </div>
             )}
 

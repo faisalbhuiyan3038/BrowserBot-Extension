@@ -251,15 +251,19 @@ async function streamWithOllama(
   const decoder = new TextDecoder();
   let fullText = '';
   let fullThinking = '';
+  let buffer = '';
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
     if (options.signal?.aborted) { reader.cancel(); break; }
 
-    const text = decoder.decode(value, { stream: true });
-    const lines = text.split('\n').filter(l => l.trim());
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
     for (const line of lines) {
+      if (!line.trim()) continue;
       try {
         const data = JSON.parse(line);
 
