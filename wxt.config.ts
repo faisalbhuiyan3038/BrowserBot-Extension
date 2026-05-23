@@ -29,7 +29,10 @@ export default defineConfig({
     ...(browser === 'firefox' ? {
       browser_specific_settings: {
         gecko: {
-          id: 'browserbot@faisalbhuiyan.com'
+          id: 'browserbot@faisalbhuiyan.com',
+          'data_collection_permissions': {
+            'required': ['none']
+          }
         }
       }
     } : {})
