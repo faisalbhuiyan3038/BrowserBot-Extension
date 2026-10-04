@@ -1,0 +1,147 @@
+<!doctype html><!-- BrowserBot — sketch concept. Design tokens live in :root; mount inside a Shadow DOM when shipping in the extension. --><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BrowserBot — Sketch</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Nunito:wght@400;600;700&display=swap"><style>
+:root{--hb:#fff;--hfg:#1c1c20;--hm:#62626b;--hcode:#f5f5f7;--hbd:#e2e2e6;--hl:#fff1a8;--hlb:#e8b800;--er:#c8372d;--rx:999px}
+[data-theme=dark]{--hb:#18181b;--hfg:#e6e6ea;--hm:#9d9da6;--hcode:#222226;--hbd:#34343a;--hl:#5a4a00;--er:#ff7a70}
+*{box-sizing:border-box;margin:0}
+body{font:16px/1.65 system-ui,sans-serif;background:var(--hb);color:var(--hfg);min-height:100vh;transition:background .2s,color .2s}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:0}
+:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.ctl{position:fixed;top:12px;left:12px;z-index:9;background:#14141ce6;color:#fff;border-radius:10px;padding:8px 10px;font:12px system-ui;display:flex;gap:6px;flex-wrap:wrap;max-width:calc(100% - 24px)}
+.ctl i{width:100%;font-style:normal;opacity:.75;font-size:11px}
+.ctl button{padding:4px 10px;border-radius:6px;background:#ffffff26;transition:.15s}.ctl button:hover{background:#ffffff44}.ctl button.on{background:#fff;color:#111}
+.host{max-width:720px;margin:0 auto;padding:96px 24px 140px}
+.host small{color:var(--hm);font-size:13px}.host h1{font-size:34px;line-height:1.2;margin:10px 0 14px;letter-spacing:-.02em}.host h2{font-size:22px;margin:30px 0 8px}.host p{margin:10px 0}.host ul{padding-left:22px}
+.host pre{background:var(--hcode);border:1px solid var(--hbd);padding:14px;border-radius:6px;overflow:auto;font:13px/1.55 ui-monospace,Menlo,Consolas,monospace;margin:14px 0}
+.host mark{background:var(--hl);color:inherit;padding:2px 0;border-radius:2px;transition:box-shadow .3s}.flash{box-shadow:0 0 0 4px var(--hlb)}
+.bb{position:fixed;right:24px;bottom:24px;width:400px;max-width:calc(100vw - 32px);height:min(680px,calc(100vh - 48px));display:flex;flex-direction:column;background:var(--pbg);color:var(--fg);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);font:14px/1.55 var(--font);overflow:hidden;-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);transition:background .2s,color .2s,border-color .2s}
+.bb header{display:flex;justify-content:space-between;align-items:center;padding:12px 14px}
+.brand{display:flex;align-items:center;gap:8px;font:600 15px var(--hfont)}.logo{width:22px;height:22px;color:var(--ac)}
+.acts{display:flex;gap:2px}.acts button{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;color:var(--mute);transition:.15s}.acts button:hover{background:var(--acs);color:var(--act)}
+.ctx{display:flex;align-items:center;gap:8px;margin:0 14px 8px;padding:6px 10px;border:1px solid var(--bd);border-radius:var(--rx);font-size:12px;color:var(--mute);background:var(--sub)}
+.ctx b{color:var(--fg);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fav{width:16px;height:16px;flex:none;color:var(--ac)}
+#v{flex:1;min-height:0;overflow:auto;padding:8px 14px;display:flex;flex-direction:column;gap:14px;transition:opacity .16s,transform .16s}.out{opacity:0;transform:translateY(4px)}
+.m{display:flex;gap:8px;align-items:flex-start;animation:in .25s both}.m.u{justify-content:flex-end}@keyframes in{from{opacity:0;transform:translateY(6px)}}
+.av{width:24px;height:24px;flex:none;color:var(--ac);margin-top:2px}.ans{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.b{padding:9px 12px;border-radius:var(--rb);overflow-wrap:anywhere}.u .b{background:var(--ub);color:var(--ubf);max-width:85%;border-bottom-right-radius:4px}.ai .b{background:var(--ab);border:1px solid var(--abd)}
+.b>*+*{margin-top:8px}.b ul,.b ol{padding-left:18px}.b li+li{margin-top:2px}
+.b blockquote{border-left:3px solid var(--ac);padding:2px 10px;color:var(--mute);font-style:italic}
+.b table{border-collapse:collapse;width:100%;font-size:12.5px}.b th,.b td{padding:5px 8px;border-bottom:1px solid var(--bd);text-align:left}.b th{color:var(--mute);font-weight:600}
+.b pre{background:var(--code);padding:9px 11px;border-radius:8px;overflow-x:auto}.b code{font:12px ui-monospace,Menlo,Consolas,monospace;background:var(--code);padding:1px 4px;border-radius:4px}.b pre code{padding:0;background:none}
+.c{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;margin:0 2px;border-radius:5px;background:var(--acs);color:var(--act);font:700 11px var(--font);vertical-align:1px;text-decoration:none;font-style:normal;transition:.15s}.c:hover{background:var(--ac);color:var(--acfg)}
+.sel{display:flex;gap:7px;align-items:flex-start;padding:6px 9px;border-radius:8px;background:var(--sub);border-left:3px solid var(--hlb);font-size:12px;color:var(--mute)}.sel svg{flex:none;margin-top:3px}
+.src{background:var(--sub);border:1px solid var(--bd);border-radius:10px;padding:8px 10px;font-size:12px;color:var(--mute)}.src small{display:block;font-size:12px;font-weight:600;margin-bottom:2px}
+.src a{display:flex;align-items:center;gap:4px;color:var(--fg);text-decoration:none;padding:1px 0}.src a:hover{color:var(--act)}
+.dots{display:flex;align-items:center;gap:5px;color:var(--mute)}.dots i{width:6px;height:6px;border-radius:50%;background:var(--ac);animation:bn 1.2s infinite}.dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}.dots span{margin-left:4px}
+@keyframes bn{0%,60%,100%{opacity:.3;transform:none}30%{opacity:1;transform:translateY(-3px)}}
+.hello{padding:18px 4px 4px}.hello .logo{width:36px;height:36px}.hello h2{font:600 22px var(--hfont);margin:10px 0 4px}.hello p{color:var(--mute)}
+.sug{display:flex;flex-direction:column;gap:6px}.sug button{text-align:left;padding:9px 12px;border:1px solid var(--bd);border-radius:var(--rs);background:var(--sub);font-weight:500;transition:.15s}.sug button:hover{border-color:var(--ac);background:var(--acs);color:var(--act)}
+.err{display:flex;gap:10px;padding:12px;border-radius:12px;border:1px solid var(--er);background:color-mix(in srgb,var(--er) 10%,transparent)}.err svg{color:var(--er);flex:none;margin-top:3px}.err b{display:block}.err p{color:var(--mute);margin:2px 0 10px;font-size:13px}
+.rt{padding:6px 16px;border-radius:var(--rs);background:var(--ac);color:var(--acfg);font-weight:600;transition:.15s}.rt:hover{filter:brightness(1.1)}
+.bb footer{padding:10px 14px 14px}.cmp{border:1px solid var(--bd);border-radius:var(--rc);background:var(--cb);padding:8px 10px;transition:.15s}.cmp:focus-within{border-color:var(--ac);box-shadow:0 0 0 3px var(--acs)}
+textarea{width:100%;border:0;background:none;resize:none;outline:0;font:inherit;color:inherit;max-height:90px;display:block}textarea::placeholder{color:var(--mute)}
+.row{display:flex;justify-content:space-between;align-items:center;margin-top:4px}.att{display:flex;gap:5px;align-items:center;font-size:12px;color:var(--mute);padding:3px 7px;border-radius:7px;transition:.15s}.att:hover{background:var(--acs);color:var(--act)}
+.send{width:30px;height:30px;border-radius:var(--rs);background:var(--ac);color:var(--acfg);display:grid;place-items:center;transition:.15s}.send:hover{filter:brightness(1.1);transform:translateY(-1px)}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+:root{--pbg:#fffbf0;--blur:none;--fg:#2a2622;--mute:#645c52;--bd:#2a2622;--sub:#fff3d6;--ac:#e0482c;--acfg:#fff;--acs:#ffe3d8;--act:#b02f17;--ub:#ffd45e;--ubf:#2a2622;--ab:#fffbf0;--abd:#2a2622;--code:#f4ead2;--cb:#fffbf0;--r:22px;--rb:16px;--rc:14px;--rs:12px;--sh:6px 6px 0 #2a2622;--font:Nunito,system-ui,sans-serif;--hfont:Caveat,cursive;--ln:rgba(70,110,190,.17)}
+[data-theme=dark]{--pbg:#2a2723;--fg:#f4eee3;--mute:#bdb4a5;--bd:#d8cfbf;--sub:#37332d;--ac:#ff7f61;--acfg:#2a1208;--acs:#4a2c22;--act:#ffa68f;--ub:#e6b93c;--ubf:#241c05;--ab:#2a2723;--abd:#d8cfbf;--code:#37332d;--cb:#2a2723;--sh:6px 6px 0 #0008;--ln:rgba(200,220,255,.07)}
+.bb{border:2px solid var(--bd);border-radius:22px 28px 18px 26px/26px 18px 28px 20px}
+#v{background:repeating-linear-gradient(transparent 0 27px,var(--ln) 27px 28px)}
+.brand{font:700 28px/1 Caveat}.brand b{text-decoration:underline wavy var(--ac) 1.5px;text-underline-offset:6px}.logo{transform:rotate(-8deg)}
+.hello h2{font:700 36px/1 Caveat;transform:rotate(-1deg)}.hello p{background:var(--pbg);display:inline}
+.b{border:1.5px solid var(--bd);border-radius:14px 18px 12px 18px/18px 12px 18px 14px}.u .b{border-bottom-right-radius:3px}
+.ctx{border:1.5px dashed var(--bd)}.src,.sel{border:1.5px dashed var(--bd);border-radius:12px 16px 10px 14px}.sel{border-left:5px solid var(--hlb)}
+.src small,.err b{font:700 22px/1 Caveat}.c{border:1.5px solid var(--act);border-radius:50%;min-width:20px;height:20px}
+.sug button{font:700 21px/1.1 Caveat;border:1.5px solid var(--bd);border-radius:14px 10px 16px 10px/10px 16px 10px 14px;background:var(--pbg);box-shadow:2px 2px 0 var(--bd)}
+.sug button:nth-child(odd){transform:rotate(-.8deg)}.sug button:nth-child(even){transform:rotate(.8deg)}.sug button:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--bd)}
+.err{border:2px solid var(--er);border-radius:14px 18px 12px 16px;background:var(--pbg)}
+.rt,.send{border:1.5px solid var(--bd);box-shadow:2px 2px 0 var(--bd);border-radius:12px 9px 12px 9px}.rt{font:700 20px/1.2 Caveat}
+.cmp{border:1.5px solid var(--bd);border-radius:14px 18px 12px 18px/18px 12px 18px 14px}.ctl{font-family:system-ui}
+
+::selection{background:var(--hlb);color:#2a2622}
+:focus-visible{outline:2px dashed var(--ac);outline-offset:3px}textarea:focus-visible{outline:0}
+.bb{animation:rise .35s cubic-bezier(.2,.8,.2,1) both;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/><feColorMatrix values='0 0 0 0 .4 0 0 0 0 .3 0 0 0 0 .2 0 0 0 .07 0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>")}
+@keyframes rise{from{opacity:0;transform:translateY(14px) rotate(.6deg)}}
+.bb header{position:relative}.bb header::before{content:"";position:absolute;top:5px;left:50%;width:34px;height:6px;transform:translateX(-50%);background:radial-gradient(circle,var(--mute) 1.2px,transparent 1.7px) 0 0/8px 6px;opacity:.55}
+.acts button:hover{transform:rotate(-6deg)}
+#v{scrollbar-width:thin;scrollbar-color:var(--mute) transparent}
+.m{animation:pop .3s cubic-bezier(.2,.9,.3,1.2) both}@keyframes pop{from{opacity:0;transform:translateY(8px) rotate(-1deg)}}
+.m.ai .av{transform:rotate(-6deg)}
+.m .b,.sug button,.src,.sel,.cmp,.ctx,.err,.rt,.send{border:0;position:relative}
+.m .b::before,.sug button::before,.src::before,.sel::before,.cmp::before,.ctx::before,.err::before,.rt::before,.send::before{content:"";position:absolute;inset:0;border:1.5px solid var(--bd);border-radius:inherit;filter:url(#rough);pointer-events:none;transition:border-color .15s}
+.ctx::before,.src::before,.sel::before{border-style:dashed}.sel::before{border-left:5px solid var(--hlb)}.err::before{border:2px solid var(--er)}.cmp:focus-within::before{border-color:var(--ac)}
+.u .b{transform:rotate(.5deg);box-shadow:2px 2px 0 var(--bd)}.ai .b{box-shadow:3px 3px 0 color-mix(in srgb,var(--bd) 20%,transparent)}
+.ctx::after{content:"";position:absolute;top:-7px;right:18px;width:44px;height:14px;background:color-mix(in srgb,var(--hlb) 55%,transparent);transform:rotate(-4deg)}
+.sel span{background:linear-gradient(transparent 58%,color-mix(in srgb,var(--hlb) 50%,transparent) 58%);color:var(--fg);-webkit-box-decoration-break:clone;box-decoration-break:clone}
+.b blockquote{border:0;font:600 20px/1.2 Caveat;font-style:normal;color:var(--fg);padding:2px 8px 2px 24px;position:relative}.b blockquote::before{content:"\201C";position:absolute;left:2px;top:-8px;font:700 46px/1 Caveat;color:var(--ac)}
+.b ul{list-style:none;padding-left:2px}.b ul li{position:relative;padding-left:18px}.b ul li::before{content:"";position:absolute;left:3px;top:.6em;width:7px;height:7px;background:var(--ac);border-radius:50% 40% 55% 45%}
+.b ol li::marker{font:700 19px Caveat;color:var(--act)}
+.b th{font:700 19px/1 Caveat;color:var(--act)}.b td,.b th{border-bottom:1.5px dashed var(--bd)}
+.b pre{position:relative;border:1.5px dashed var(--bd)}.cp{position:absolute;top:3px;right:6px;font:700 17px/1 Caveat;color:var(--act);padding:2px 6px;border-radius:6px;opacity:0;transition:.15s}.cp:hover{background:var(--acs)}pre:hover .cp,.cp:focus-visible{opacity:1}
+.c{font:700 15px/1 Caveat;min-width:20px;height:20px;background:var(--acs)}
+.hello h2::after{content:"\2726";color:var(--ac);font-size:.55em;margin-left:6px;vertical-align:top}
+.pick{display:flex;align-items:flex-end;gap:4px;font:700 22px/1 Caveat;color:var(--act);transform:rotate(-3deg);margin:12px 0 0 4px}.pick svg{width:34px;height:26px;stroke-width:2}
+.scr{width:56px;height:16px;stroke:var(--ac);stroke-width:2.2}.scr path{stroke-dasharray:1;animation:dr 1.4s ease-in-out infinite}@keyframes dr{0%{stroke-dashoffset:1}50%{stroke-dashoffset:0}100%{stroke-dashoffset:-1}}
+.dots span{font:600 19px/1 Caveat;margin:0}
+textarea::placeholder{font:600 20px Caveat}
+.sug button:active,.rt:active,.send:active{transform:translate(2px,2px);box-shadow:none}
+@media(max-width:480px){.bb{left:8px;right:8px;bottom:8px;width:auto;max-width:none}}
+</style></head><body>
+<svg style="position:absolute;width:0;height:0"><defs>
+<symbol id="lg" viewBox="0 0 24 24"><rect width="24" height="24" rx="7" fill="currentColor" stroke="none"/><path d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z" fill="#fff" stroke="none"/><circle cx="10" cy="11" r="1.1" fill="currentColor" stroke="none"/><circle cx="14" cy="11" r="1.1" fill="currentColor" stroke="none"/></symbol>
+<symbol id="fv" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" stroke="none"/><path d="M13 6l-5 7h4l-1 5 5-7h-4z" fill="#fff" stroke="none"/></symbol>
+<symbol id="mn" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol><symbol id="x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+<symbol id="sd" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+<symbol id="at" viewBox="0 0 24 24"><path d="M20 11.5l-8 8a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L9.7 17.2a1.7 1.7 0 0 1-2.4-2.4L15 7"/></symbol>
+<symbol id="sl" viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h13"/></symbol>
+<symbol id="al" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5M12 16h.01"/></symbol>
+<filter id="rough" x="-3%" y="-6%" width="106%" height="112%"><feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="2" seed="4" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="3.2"/></filter></defs></svg>
+<div class="ctl"><i>mockup controls — not part of the UI</i>
+<button data-s="empty" class="on">Empty</button><button data-s="thinking">Thinking</button><button data-s="conv">Conversation</button><button data-s="err">Error</button><button id="th">Light / Dark</button></div>
+<article class="host"><small>Web technology for developers / Guides / Performance</small>
+<h1>Web Performance Optimization</h1>
+<p>Web performance is both the objective measurement and the perceived experience of how quickly a page loads and responds. Fast pages keep readers engaged, convert better, and cost less to serve. Treat optimization as a loop: measure, change one thing, then measure again.</p>
+<h2>Loading less, and loading it later</h2>
+<p>The biggest wins usually come from sending fewer bytes up front. <mark id="h1">Images should be lazy-loaded so offscreen content never competes with critical resources, and render-blocking scripts should be deferred until after first paint.</mark> Reserve space for media so the layout doesn't jump while it arrives.</p>
+<pre id="h2"><code>&lt;img src="hero.avif" width="800" height="450"
+     fetchpriority="high" alt="Hero"&gt;
+&lt;img src="team.avif" loading="lazy" alt="Team"&gt;
+&lt;script src="app.js" defer&gt;&lt;/script&gt;</code></pre>
+<h2>Pre-launch checklist</h2>
+<ul id="h3"><li>Compress images and serve AVIF or WebP</li><li>Set explicit width and height on all media</li><li>Defer non-critical JavaScript</li><li>Preload the fonts used above the fold</li><li>Cache static assets with long max-age and hashed filenames</li></ul>
+<p>Run Lighthouse after each change and compare Largest Contentful Paint before moving on.</p></article>
+<aside class="bb" aria-label="BrowserBot chat">
+<header><div class="brand"><svg class="logo"><use href="#lg"/></svg><b>BrowserBot</b></div><div class="acts"><button aria-label="Minimize"><svg><use href="#mn"/></svg></button><button aria-label="Close"><svg><use href="#x"/></svg></button></div></header>
+<div class="ctx"><svg class="fav"><use href="#fv"/></svg><b>Web Performance Optimization</b><span>developer.mozilla.org</span></div>
+<main id="v" aria-live="polite"></main>
+<footer><div class="cmp"><textarea id="ta" rows="1" placeholder="Ask about this page…" aria-label="Message BrowserBot"></textarea><div class="row"><button class="att"><svg><use href="#at"/></svg>Page + selection</button><button class="send" id="sd" aria-label="Send"><svg><use href="#sd"/></svg></button></div></div></footer></aside>
+<script>
+const $=s=>document.querySelector(s),v=$('#v'),ta=$('#ta');
+const U=t=>`<div class="m u"><div class="b">${t}</div></div>`;
+const AV='<svg class="av"><use href="#lg"/></svg>';
+const C=(n,h)=>`<a href="#" class="c" data-h="#${h}" title="Show on page">${n}</a>`;
+const chips=a=>`<div class="sug">${a.map(q=>`<button data-q="${q}">${q}</button>`).join('')}</div>`;
+let last='Summarize this page',t;
+const S={
+empty:()=>`<div class="hello"><svg class="logo"><use href="#lg"/></svg><h2>Hi, I'm BrowserBot</h2><p>I can read this page and your selection. Ask me anything about it.</p><span class="pick">try one of these<svg viewBox="0 0 40 30"><path d="M4 4c14 0 26 6 28 20M32 24l-6-5M32 24l5-6"/></svg></span></div>`+chips(['Summarize this page','Explain the highlighted text','Extract the checklist','What does this code do?']),
+thinking:()=>U(last)+`<div class="m ai">${AV}<div class="ans"><div class="b dots"><svg class="scr" viewBox="0 0 64 16"><path pathLength="1" d="M2 8q5-12 10 0t10 0 10 0 10 0 10 0 10 0"/></svg><span>Skimming the page…</span></div></div></div>`,
+err:()=>U(last)+`<div class="err" role="alert"><svg><use href="#al"/></svg><div><b>Couldn't read this page's content</b><p>The page blocked BrowserBot from reading it. Allow site access in the extension settings, then retry.</p><button class="rt" id="rt">Retry</button></div></div>`,
+conv:()=>U('Explain the highlighted text')+`<div class="m ai">${AV}<div class="ans"><div class="sel"><svg><use href="#sl"/></svg><span>Your selection: “Images should be lazy-loaded so offscreen content never competes…”</span></div><div class="b"><p>It tells you to <b>stop the browser fetching what the reader can't see yet</b>, so critical resources get the bandwidth first.${C(1,'h1')}</p><blockquote>Render-blocking scripts should be deferred until after first paint.</blockquote><p>In practice, that's three changes:</p><ul><li><b>Lazy-load</b> below-the-fold images with <code>loading="lazy"</code>.</li><li><b>Defer</b> scripts that aren't needed for first paint.</li><li><b>Keep</b> the hero image eager with <code>fetchpriority="high"</code>.${C(2,'h2')}</li></ul></div></div></div>`+
+U('Turn that into steps I can follow')+`<div class="m ai">${AV}<div class="ans"><div class="b"><p>Apply them in this order, lowest risk first:</p><ol><li>Mark the hero image <code>fetchpriority="high"</code>.</li><li>Add <code>loading="lazy"</code> to every image below the fold.</li><li>Add <code>defer</code> to non-critical scripts.</li><li>Re-run Lighthouse and compare LCP.</li></ol><table><tr><th>Change</th><th>Helps</th><th>Risk</th></tr><tr><td>Lazy-load</td><td>Initial weight</td><td>Low</td></tr><tr><td>defer</td><td>First paint</td><td>Medium</td></tr><tr><td>Preload font</td><td>Text flash</td><td>Low</td></tr></table><pre><code>&lt;script src="app.js" defer&gt;&lt;/script&gt;</code></pre><p>The page's own example uses this pattern${C(2,'h2')} and the checklist covers fonts and caching.${C(3,'h3')}</p></div><div class="src"><small>Sources on this page</small><a href="#" data-h="#h1">${'<i class="c">1</i>'}Loading less, and loading it later</a><a href="#" data-h="#h2"><i class="c">2</i>Code example</a><a href="#" data-h="#h3"><i class="c">3</i>Pre-launch checklist</a></div></div></div>`+chips(['Extract the checklist','What does this code do?'])};
+let tm;
+function post(s){clearInterval(tm);
+v.querySelectorAll('pre').forEach(p=>{const b=document.createElement('button');b.className='cp';b.textContent='copy';b.onclick=()=>{try{navigator.clipboard.writeText(p.querySelector('code').innerText)}catch(e){}b.textContent='copied!';setTimeout(()=>b.textContent='copy',1200)};p.appendChild(b)});
+if(s=='thinking'){let i=0;const w=['Skimming the page…','Underlining the good bits…','Writing it up…'];tm=setInterval(()=>{const e=$('.dots span');if(e)e.textContent=w[++i%3]},1000)}}
+function go(s){document.querySelectorAll('.ctl [data-s]').forEach(b=>b.classList.toggle('on',b.dataset.s==s));v.classList.add('out');setTimeout(()=>{v.innerHTML=S[s]();v.scrollTop=0;post(s);v.classList.remove('out')},160)}
+const ask=q=>{clearTimeout(t);last=q.replace(/</g,'&lt;');go('thinking');t=setTimeout(()=>go('conv'),2200)};
+const send=()=>{const x=ta.value.trim();if(x){ta.value='';ta.style.height='auto';ask(x)}};
+document.addEventListener('click',e=>{const q=e.target.closest('[data-q]'),h=e.target.closest('[data-h]'),s=e.target.closest('[data-s]');
+if(q)return ask(q.dataset.q);
+if(h){e.preventDefault();const el=$(h.dataset.h);el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1600)}
+if(s){clearTimeout(t);go(s.dataset.s)}
+if(e.target.closest('#rt'))ask(last);
+if(e.target.closest('#sd'))send();
+if(e.target.closest('#th')){const d=document.documentElement;d.dataset.theme=d.dataset.theme=='dark'?'light':'dark'}});
+ta.onkeydown=e=>{if(e.key=='Enter'&&!e.shiftKey){e.preventDefault();send()}};
+ta.oninput=()=>{ta.style.height='auto';ta.style.height=ta.scrollHeight+'px'};go('empty');
+</script></body></html>

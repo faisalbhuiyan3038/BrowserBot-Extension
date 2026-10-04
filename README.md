@@ -41,32 +41,7 @@ BrowserBot is an AI-powered browser extension that helps you **automate tab mana
 
 ## **Setup and Installation**
 
-### **Prerequisites**
-- A modern browser (Chrome or Firefox).
-- Node.js and npm/yarn (for building from source).
-- API key for **OpenAI API** (if used).
-
 ### **Installation Steps**
-1. **Clone the Repository** (if building from source):
-   ```bash
-   git clone <repository-url>
-   cd BrowserBot-Extension
-   ```
-
-2. **Install Dependencies**:
-   ```bash
-   npm install
-   # or
-   yarn install
-   ```
-
-3. **Build the Extension**:
-   ```bash
-   npm run build
-   # or
-   yarn build
-   ```
-   - Outputs files to the `.output/` directory.
 
 4. **Load the Extension in the Browser**:
    - **Chrome**:
@@ -129,4 +104,3 @@ BrowserBot is an AI-powered browser extension that helps you **automate tab mana
 ### **Privacy and Security**
 - The extension requests permissions to access **tabs**, **bookmarks**, and **web page content**.
 - AI interactions may send webpage content to external providers (e.g., OpenAI API).
-- Keep API keys secure and avoid exposing them in public repositories.
