@@ -2,7 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { createElement } from 'react';
 import AskPagePanel from './AskPagePanel';
 import { extractPageContent } from '../../utils/extractor';
-import { getStyles, getRoughFilterSVG } from '../../utils/chatStyles';
+import { getStyles, getRoughFilterSVG, ensurePanelFonts } from '../../utils/chatStyles';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -143,6 +143,11 @@ export default defineContentScript({
     async function mountUI(pageTitle: string, pageUrl: string) {
       if (uiMounted) return;
       uiMounted = true;
+
+      // Register Caveat/Nunito at document level (FontFace API bypasses
+      // host-page font-src CSP that blocks @font-face in shadow <style>).
+      // Fire-and-forget: text swaps in automatically once loaded.
+      void ensurePanelFonts();
 
       const ui = await createShadowRootUi(ctx, {
         name: 'browserbot-ask-page',

@@ -819,13 +819,27 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
 
   const detectSlash = (value: string, cursorPos: number) => {
     const before = value.slice(0, cursorPos);
+    // In a submenu the "/" token was already consumed by selection, so filter
+    // by the trailing word (with or without a leading slash).
+    if (slashOpen && slashMode !== 'root') {
+      const mSub = /(?:^|\s)\/?(\w*)$/.exec(before);
+      const nextQ = mSub ? (mSub[1] || '') : '';
+      if (nextQ !== slashQuery) setSlashQuery(nextQ);
+      return;
+    }
     const m = /(^|\s)\/(\w*)$/.exec(before);
     if (m) {
-      // If already in a submenu, filter by its query; otherwise open root menu
-      if (!slashOpen) setSlashMode('root');
-      setSlashQuery(m[2] || '');
-      setSlashOpen(true);
-      setSlashIndex(0);
+      const nextQ = m[2] || '';
+      if (!slashOpen) {
+        // Fresh open only — index reset belongs here, not on every keystroke,
+        // otherwise ArrowDown/Up navigation snaps back on the following keyup.
+        setSlashMode('root');
+        setSlashQuery(nextQ);
+        setSlashOpen(true);
+        setSlashIndex(0);
+      } else if (nextQ !== slashQuery) {
+        setSlashQuery(nextQ);
+      }
     } else if (slashOpen && slashMode === 'root') {
       // Only auto-close root menu when slash token disappears.
       // Keep submenu open so keyboard still works after selecting /model etc.
@@ -835,10 +849,17 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     }
   };
 
-  // Reset slash index when options change
+  // Reset slash index when the filter changes (NOT on navigation)
   useEffect(() => {
     setSlashIndex(0);
   }, [slashQuery, slashMode]);
+
+  // Clamp highlight when options shrink (e.g. tab list loads) without
+  // touching it otherwise, so ArrowUp/Down position is preserved.
+  useEffect(() => {
+    if (slashIndex >= slashOptions.length) setSlashIndex(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slashOptions.length]);
 
   // Scroll active slash option into view
   useEffect(() => {
@@ -1217,6 +1238,10 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
               if (ta) detectSlash(ta.value, ta.selectionStart ?? ta.value.length);
             }}
             onKeyUp={e => {
+              // Navigation/selection keys must not re-run slash detection:
+              // keydown already moved the highlight and a detectSlash() here
+              // would reset slashIndex back to 0 (snap-back bug).
+              if (['ArrowUp', 'ArrowDown', 'Enter', 'Tab', 'Escape'].includes(e.key)) return;
               const ta = e.currentTarget;
               detectSlash(ta.value, ta.selectionStart ?? ta.value.length);
             }}

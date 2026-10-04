@@ -34,6 +34,101 @@ export function getFontFaces(): string {
   }
 }
 
+// ─── Document-level font registration ─────────────────────────────
+// @font-face rules inside a ShadowRoot <style> are unreliable (Chromium
+// issue 41085401; plus host-page font-src CSP can block chrome-extension://
+// loads). The popup (an extension page) works while the content-script panel
+// falls back to sans-serif. So we register the binaries directly on
+// document.fonts via the FontFace API — fonts defined outside the shadow
+// root ARE usable inside it — and also inject a page-level @font-face
+// fallback <style> into document.head for permissive pages.
+let panelFontsPromise: Promise<void> | null = null;
+let panelFontsHeadInjected = false;
+
+function fontExtUrl(p: any): string {
+  try { return browser.runtime.getURL(p); }
+  catch { return String(p); }
+}
+
+// Page-level @font-face fallback (helps when the page has no restrictive
+// font-src CSP but shadow-scoped @font-face fails to register).
+function injectFontFacesIntoHead(): void {
+  try {
+    if (panelFontsHeadInjected) return;
+    panelFontsHeadInjected = true;
+    const doc = document;
+    if (!doc || !doc.head || doc.head.querySelector('style[data-browserbot-fonts]')) return;
+    const style = doc.createElement('style');
+    style.setAttribute('data-browserbot-fonts', 'true');
+    style.textContent = `
+      @font-face { font-family: 'Caveat'; src: url('${fontExtUrl('/fonts/Caveat/Caveat-VariableFont_wght.ttf')}') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
+      @font-face { font-family: 'Nunito'; src: url('${fontExtUrl('/fonts/Nunito/Nunito-VariableFont_wght.ttf')}') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
+      @font-face { font-family: 'Nunito'; src: url('${fontExtUrl('/fonts/Nunito/Nunito-Italic-VariableFont_wght.ttf')}') format('truetype'); font-weight: 100 900; font-style: italic; font-display: swap; }
+    `;
+    doc.head.appendChild(style);
+  } catch { /* non-fatal */ }
+}
+
+export function ensurePanelFonts(): Promise<void> {
+  if (panelFontsPromise) return panelFontsPromise;
+  panelFontsPromise = (async () => {
+    const log = (...a: any[]) => { try { console.info('[BrowserBot fonts]', ...a); } catch { /* noop */ } };
+    try {
+      injectFontFacesIntoHead();
+      const fontsApi = (document as any).fonts;
+      if (!fontsApi || typeof FontFace === 'undefined') {
+        log('FontFace API unavailable, using CSS fallback only');
+        return;
+      }
+      try {
+        if (fontsApi.check('700 16px Caveat') && fontsApi.check('400 16px Nunito')) {
+          log('already available, skipping load');
+          return;
+        }
+      } catch { /* check may throw for unknown families — proceed to load */ }
+      const specs: { family: string; path: string; weight: string; style: string }[] = [
+        { family: 'Caveat', path: '/fonts/Caveat/Caveat-VariableFont_wght.ttf', weight: '100 900', style: 'normal' },
+        { family: 'Nunito', path: '/fonts/Nunito/Nunito-VariableFont_wght.ttf', weight: '100 900', style: 'normal' },
+        { family: 'Nunito', path: '/fonts/Nunito/Nunito-Italic-VariableFont_wght.ttf', weight: '100 900', style: 'italic' },
+      ];
+      const results = await Promise.allSettled(specs.map(async (s) => {
+        const url = fontExtUrl(s.path);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`fetch ${res.status} ${url}`);
+        const buf = await res.arrayBuffer();
+        log(`fetched ${s.family} (${s.style})`, `${buf.byteLength} bytes`);
+        const face = new FontFace(s.family, buf, { weight: s.weight, style: s.style, display: 'swap' } as any);
+        const loaded = await face.load();
+        fontsApi.add(loaded);
+        return `${s.family}/${s.style}`;
+      }));
+      for (const r of results) {
+        if (r.status === 'rejected') log('FAILED:', r.reason?.message ?? r.reason);
+        else log('registered:', r.value);
+      }
+      // Explicit verification: force load + check what the renderer sees.
+      try {
+        await Promise.allSettled([
+          fontsApi.load('700 20px Caveat'),
+          fontsApi.load('600 14px Nunito'),
+          fontsApi.load('italic 600 14px Nunito'),
+        ]);
+        log(
+          'verify check() Caveat:',
+          (() => { try { return fontsApi.check('700 16px Caveat'); } catch (e) { return `check threw: ${e}`; } })(),
+          'Nunito:',
+          (() => { try { return fontsApi.check('400 16px Nunito'); } catch (e) { return `check threw: ${e}`; } })(),
+        );
+      } catch (e) {
+        log('verify step failed:', e);
+      }
+    } catch (e) {
+      log('unexpected failure:', e);
+    }
+  })();
+  return panelFontsPromise;
+}
+
 export function getRoughFilterSVG(): string {
   return `<svg style="position:absolute;width:0;height:0;overflow:hidden;pointer-events:none;" aria-hidden="true">
     <defs>
