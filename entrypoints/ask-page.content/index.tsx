@@ -2,7 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { createElement } from 'react';
 import AskPagePanel from './AskPagePanel';
 import { extractPageContent } from '../../utils/extractor';
-import { getStyles } from '../../utils/chatStyles';
+import { getStyles, getRoughFilterSVG } from '../../utils/chatStyles';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -93,7 +93,7 @@ export default defineContentScript({
 
         return new Proxy(xhr, {
           get(t, prop) {
-            if (prop === 'open') return (m: string, u: string, ...rest: any[]) => { _method = m; _url = u; _start = Date.now(); return t.open(m, u, ...rest); };
+            if (prop === 'open') return (m: string, u: string, ...rest: any[]) => { _method = m; _url = u; _start = Date.now(); return (t.open as any)(m, u, ...rest); };
             if (prop === 'setRequestHeader') return (k: string, v: string) => { _reqHeaders[k] = v; return t.setRequestHeader(k, v); };
             if (prop === 'send') return (body?: any) => { _body = body; return t.send(body); };
             const val = (t as any)[prop];
@@ -149,11 +149,15 @@ export default defineContentScript({
         position: 'overlay',
         zIndex: 2147483646,
         onMount(container) {
-          // Inject styles into shadow root
+          // Inject styles and rough filter into shadow root
           const style = document.createElement('style');
           style.textContent = getStyles();
           const shadowRoot = container.getRootNode() as ShadowRoot;
           shadowRoot.appendChild(style);
+
+          const filterContainer = document.createElement('div');
+          filterContainer.innerHTML = getRoughFilterSVG();
+          shadowRoot.appendChild(filterContainer);
 
           // Create React root
           const wrapper = document.createElement('div');

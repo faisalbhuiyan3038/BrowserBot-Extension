@@ -629,7 +629,7 @@ export default function AskDevtoolsPanel() {
     const text = input.trim();
     if (isStreaming || !text) return;
 
-    let chatMessages = messages;
+    let chatMessages: any[] = messages;
     if (!chatMessages.some(m => m.role === 'system')) {
       const systemPrompt = await buildSystemPrompt();
       chatMessages = [{ role: 'system', content: systemPrompt }, ...chatMessages];
@@ -695,10 +695,10 @@ export default function AskDevtoolsPanel() {
   const S = {
     // sidebar
     sidebar: (collapsed: boolean): React.CSSProperties => ({
-      width: collapsed ? '40px' : '360px',
-      minWidth: collapsed ? '40px' : '360px',
-      background: '#16171d',
-      borderRight: '1px solid #2a2b35',
+      width: collapsed ? '44px' : '360px',
+      minWidth: collapsed ? '44px' : '360px',
+      background: 'var(--sub)',
+      borderRight: '2px solid var(--bd)',
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
@@ -706,93 +706,100 @@ export default function AskDevtoolsPanel() {
       position: 'relative',
     }),
     card: (): React.CSSProperties => ({
-      background: '#1e1f28',
-      border: '1px solid #2a2b35',
-      borderRadius: '8px',
+      background: 'var(--pbg)',
+      border: '1.5px solid var(--bd)',
+      borderRadius: '16px 12px 18px 14px / 14px 18px 12px 16px',
       padding: '12px',
       display: 'flex',
       flexDirection: 'column',
       gap: '8px',
+      boxShadow: 'var(--sh-sm)',
     }),
     sectionTitle: (): React.CSSProperties => ({
-      fontSize: '11px',
+      fontSize: '16px',
       fontWeight: 700,
-      letterSpacing: '0.06em',
-      textTransform: 'uppercase' as const,
-      color: '#6b7280',
-      marginBottom: '4px',
+      fontFamily: 'var(--hfont)',
+      letterSpacing: '0.02em',
+      color: 'var(--act)',
+      marginBottom: '2px',
     }),
     label: (indent = false): React.CSSProperties => ({
       display: 'flex',
       alignItems: 'center',
       gap: '8px',
-      fontSize: '13px',
-      color: '#d1d5db',
+      fontSize: '12.5px',
+      color: 'var(--fg)',
       cursor: 'pointer',
       marginLeft: indent ? '20px' : 0,
+      fontFamily: 'var(--font)',
     }),
     badge: (color: string): React.CSSProperties => ({
       fontSize: '10px',
       fontWeight: 700,
-      padding: '1px 6px',
-      borderRadius: '10px',
-      background: color,
-      color: '#fff',
+      padding: '2px 7px',
+      borderRadius: 'var(--rx)',
+      background: color === '#374151' ? 'var(--sub)' : color,
+      color: color === '#374151' ? 'var(--fg)' : '#fff',
+      border: '1px solid var(--bd)',
       marginLeft: 'auto',
     }),
     btn: (primary = false, disabled = false): React.CSSProperties => ({
-      padding: primary ? '9px 0' : '7px 12px',
+      padding: primary ? '8px 12px' : '6px 12px',
       flex: primary ? 1 : undefined,
-      fontSize: '13px',
-      fontWeight: 600,
-      borderRadius: '7px',
-      border: primary ? 'none' : '1px solid #374151',
-      background: primary ? (disabled ? '#4b3c38' : '#e17055') : '#252630',
-      color: primary ? (disabled ? '#9ca3af' : '#fff') : '#d1d5db',
+      fontSize: '17px',
+      fontWeight: 700,
+      fontFamily: 'var(--hfont)',
+      borderRadius: '12px 9px 12px 9px',
+      border: '1.5px solid var(--bd)',
+      background: primary ? (disabled ? 'var(--mute)' : 'var(--ac)') : 'var(--pbg)',
+      color: primary ? (disabled ? 'var(--sub)' : 'var(--acfg)') : 'var(--fg)',
       cursor: disabled ? 'not-allowed' : 'pointer',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       gap: '6px',
       opacity: disabled ? 0.6 : 1,
-      transition: 'background 0.15s',
+      boxShadow: disabled ? 'none' : '2px 2px 0 var(--bd)',
+      transition: 'all 0.15s',
     }),
     select: (): React.CSSProperties => ({
       width: '100%',
-      padding: '5px 8px',
-      fontSize: '12px',
-      borderRadius: '6px',
-      border: '1px solid #374151',
-      background: '#252630',
-      color: '#d1d5db',
+      padding: '6px 8px',
+      fontSize: '12.5px',
+      borderRadius: 'var(--rs)',
+      border: '1.5px solid var(--bd)',
+      background: 'var(--sub)',
+      color: 'var(--fg)',
+      fontFamily: 'var(--font)',
     }),
     filterInput: (): React.CSSProperties => ({
       width: '100%',
-      padding: '5px 8px',
+      padding: '6px 8px',
       fontSize: '12px',
-      borderRadius: '6px',
-      border: '1px solid #374151',
-      background: '#252630',
-      color: '#d1d5db',
+      borderRadius: 'var(--rs)',
+      border: '1.5px solid var(--bd)',
+      background: 'var(--sub)',
+      color: 'var(--fg)',
       boxSizing: 'border-box' as const,
+      fontFamily: 'var(--font)',
     }),
     listBox: (): React.CSSProperties => ({
       maxHeight: '160px',
       overflowY: 'auto' as const,
-      background: '#13141a',
-      border: '1px solid #2a2b35',
-      borderRadius: '6px',
+      background: 'var(--pbg)',
+      border: '1.5px solid var(--bd)',
+      borderRadius: 'var(--rs)',
       padding: '4px',
     }),
     listRow: (error = false): React.CSSProperties => ({
       display: 'flex',
       alignItems: 'flex-start',
       gap: '6px',
-      fontSize: '11px',
+      fontSize: '11.5px',
       padding: '3px 4px',
       borderRadius: '4px',
       cursor: 'pointer',
-      color: error ? '#f87171' : '#9ca3af',
+      color: error ? 'var(--er)' : 'var(--fg)',
     }),
     collapseBtn: (): React.CSSProperties => ({
       position: 'absolute' as const,
@@ -801,21 +808,22 @@ export default function AskDevtoolsPanel() {
       transform: 'translateY(-50%)',
       width: '24px',
       height: '40px',
-      background: '#252630',
-      border: '1px solid #374151',
+      background: 'var(--sub)',
+      border: '1.5px solid var(--bd)',
       borderRadius: '6px',
       cursor: 'pointer',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      color: '#9ca3af',
+      color: 'var(--fg)',
+      boxShadow: '1.5px 1.5px 0 var(--bd)',
       zIndex: 10,
       padding: 0,
     }),
   };
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: '#13141a', fontFamily: 'system-ui, sans-serif', color: '#f3f4f6' }}>
+    <div style={{ display: 'flex', height: '100vh', background: 'var(--pbg)', fontFamily: 'var(--font)', color: 'var(--fg)' }}>
 
       {/* ── Sidebar ── */}
       <div style={S.sidebar(sidebarCollapsed)}>
@@ -832,10 +840,10 @@ export default function AskDevtoolsPanel() {
 
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e17055" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              <span style={{ fontSize: '14px', fontWeight: 700, color: '#f9fafb' }}>Capture Settings</span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ac)" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span style={{ fontSize: '20px', fontWeight: 700, fontFamily: 'var(--hfont)', color: 'var(--fg)' }}>Capture Settings</span>
             </div>
-            <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '-4px' }}>Select an element in Elements tab before capturing.</div>
+            <div style={{ fontSize: '11px', color: 'var(--mute)', marginTop: '-4px' }}>Select an element in Elements tab before capturing.</div>
 
             {/* Console section */}
             <div style={S.card()}>
@@ -1013,11 +1021,11 @@ export default function AskDevtoolsPanel() {
       </div>
 
       {/* ── Main Chat Area ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', background: '#13141a', color: '#f3f4f6', overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', background: 'var(--pbg)', color: 'var(--fg)', overflow: 'hidden' }}>
 
         {/* History sidebar */}
         {showHistory && (
-          <div className="askpage-history-sidebar" style={{ left: 0, right: 'auto', borderRight: '1px solid #374151', borderLeft: 'none' }}>
+          <div className="askpage-history-sidebar" style={{ left: 0, right: 'auto', borderRight: '2px solid var(--bd)', borderLeft: 'none' }}>
             <div className="askpage-history-header">
               <h4>Chat History</h4>
               <div style={{ display: 'flex', gap: 4 }}>
@@ -1047,11 +1055,13 @@ export default function AskDevtoolsPanel() {
         )}
 
         {/* Header */}
-        <div className="askpage-controls" style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div className="askpage-controls" style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1.5px solid var(--bd)' }}>
           <button className={`askpage-header-btn askpage-history-btn ${showHistory ? 'active' : ''}`} onClick={() => { setShowHistory(!showHistory); if (!showHistory) loadConversations(); }} title="Chat History">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           </button>
-          <span style={{ fontSize: '14px', fontWeight: 600, color: '#fff', flex: 1 }}>AI Debugger</span>
+          <span style={{ fontSize: '24px', fontWeight: 700, fontFamily: 'var(--hfont)', color: 'var(--fg)', flex: 1 }}>
+            <b>BrowserBot Debugger</b>
+          </span>
           {messages.length > 0 && (
             <button className="askpage-header-btn" onClick={clearConversation} title="New conversation">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
@@ -1065,10 +1075,10 @@ export default function AskDevtoolsPanel() {
         </div>
 
         {/* Messages */}
-        <div className="askpage-messages" ref={messagesContainerRef} style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+        <div className="askpage-messages" ref={messagesContainerRef} style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
           {messages.length === 0 ? (
             <div className="askpage-welcome">
-              <h3>AI Debugger Panel</h3>
+              <h3>Hi, I'm BrowserBot Debugger</h3>
               <p>Capture DevTools context from the sidebar, select exactly what to share, and ask the AI to debug, optimize, or explain.</p>
             </div>
           ) : messages.map((msg, i) => {
@@ -1092,21 +1102,27 @@ export default function AskDevtoolsPanel() {
             );
           })}
           {isStreaming && !thinkingContent && messages[messages.length - 1]?.content === '' && (
-            <div className="askpage-typing"><div className="askpage-typing-dot"/><div className="askpage-typing-dot"/><div className="askpage-typing-dot"/></div>
+            <div className="askpage-typing">
+              <svg className="askpage-typing-wave" viewBox="0 0 64 16">
+                <path pathLength="1" d="M2 8q5-12 10 0t10 0 10 0 10 0 10 0 10 0" />
+              </svg>
+              <span>Thinking…</span>
+            </div>
           )}
         </div>
 
         {/* Input */}
-        <div className="askpage-input-area" style={{ padding: '20px' }}>
-          <textarea ref={inputRef} className="askpage-input" value={input}
-            onChange={e => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'; }}
-            onKeyDown={handleKeyDown} placeholder="Ask about the captured DevTools data…" rows={1}
-            disabled={isStreaming || (!capturedData && messages.length === 0)}
-            style={{ opacity: (!capturedData && messages.length === 0) ? 0.5 : 1 }}
-          />
+        <div className="askpage-input-area" style={{ padding: '10px 16px 14px' }}>
+          <div className="askpage-input-wrapper" style={{ opacity: (!capturedData && messages.length === 0) ? 0.7 : 1 }}>
+            <textarea ref={inputRef} className="askpage-input" value={input}
+              onChange={e => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'; }}
+              onKeyDown={handleKeyDown} placeholder="Ask about the captured DevTools data…" rows={1}
+              disabled={isStreaming}
+            />
+          </div>
           {isStreaming
-            ? <button className="askpage-send-btn" onClick={abortStream} title="Stop"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
-            : <button className="askpage-send-btn" onClick={sendMessage} disabled={!input.trim()} title="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+            ? <button className="askpage-send-btn" onClick={abortStream} title="Stop"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg></button>
+            : <button className="askpage-send-btn" onClick={sendMessage} disabled={!input.trim()} title="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
           }
         </div>
 

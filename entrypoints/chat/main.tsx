@@ -17,7 +17,7 @@ if (wrapper) {
   document.body.style.width = '100vw';
   document.body.style.height = '100vh';
   document.body.style.overflow = 'hidden';
-  document.body.style.background = '#13141a';
+  document.body.style.background = 'var(--pbg)';
 
   const panelRoot = createRoot(wrapper);
   panelRoot.render(

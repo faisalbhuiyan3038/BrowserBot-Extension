@@ -38,7 +38,7 @@ export async function getBookmarkTree(): Promise<BookmarkTree> {
   const folders: FlatFolder[] = [];
 
   function walk(
-    nodes: browser.bookmarks.BookmarkTreeNode[],
+    nodes: any[],
     depth: number,
     parentTitle = '',
     rootParentId = '',

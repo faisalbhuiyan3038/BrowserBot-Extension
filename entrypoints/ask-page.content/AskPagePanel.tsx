@@ -730,11 +730,14 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
           </svg>
         </button>
         <div className="askpage-header-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          <svg viewBox="0 0 24 24" fill="none" stroke="none">
+            <rect width="24" height="24" rx="7" fill="currentColor"/>
+            <path d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z" fill="#fff"/>
+            <circle cx="10" cy="11" r="1.1" fill="currentColor"/>
+            <circle cx="14" cy="11" r="1.1" fill="currentColor"/>
           </svg>
         </div>
-        <span className="askpage-header-title">Ask Page</span>
+        <span className="askpage-header-title"><b>BrowserBot</b></span>
 
         {messages.length > 0 && (
           <button className="askpage-header-btn" onClick={clearConversation} title="New conversation">
@@ -812,20 +815,29 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
       {messages.length === 0 ? (
         <div className="askpage-welcome">
           <div className="askpage-welcome-icon">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            <svg viewBox="0 0 24 24" fill="none" stroke="none">
+              <rect width="24" height="24" rx="7" fill="currentColor"/>
+              <path d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z" fill="#fff"/>
+              <circle cx="10" cy="11" r="1.1" fill="currentColor"/>
+              <circle cx="14" cy="11" r="1.1" fill="currentColor"/>
             </svg>
           </div>
-          <h3>Ask about this page</h3>
-          <p>Ask questions, get summaries, or explore the content of the current page with AI.</p>
+          <h3>Hi, I'm BrowserBot</h3>
+          <p>I can read this page, your selection, and attached tabs. Ask me anything about it.</p>
           {quickPrompts.length > 0 && (
-            <div className="askpage-welcome-prompts">
-              {quickPrompts.slice(0, 4).map(p => (
-                <button key={p.id} className="askpage-welcome-prompt-btn" onClick={() => handleQuickPromptSelect(p.id)}>
-                  {p.name}
-                </button>
-              ))}
-            </div>
+            <>
+              <span className="askpage-welcome-pick">
+                try one of these
+                <svg viewBox="0 0 40 30"><path d="M4 4c14 0 26 6 28 20M32 24l-6-5M32 24l5-6"/></svg>
+              </span>
+              <div className="askpage-welcome-prompts">
+                {quickPrompts.slice(0, 4).map(p => (
+                  <button key={p.id} className="askpage-welcome-prompt-btn" onClick={() => handleQuickPromptSelect(p.id)}>
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
         </div>
       ) : (
@@ -871,9 +883,10 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
 
           {isStreaming && !thinkingContent && messages[messages.length - 1]?.content === '' && (
             <div className="askpage-typing">
-              <div className="askpage-typing-dot" />
-              <div className="askpage-typing-dot" />
-              <div className="askpage-typing-dot" />
+              <svg className="askpage-typing-wave" viewBox="0 0 64 16">
+                <path pathLength="1" d="M2 8q5-12 10 0t10 0 10 0 10 0 10 0 10 0" />
+              </svg>
+              <span>Thinking…</span>
             </div>
           )}
           <div ref={messagesEndRef} />
@@ -913,26 +926,28 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
 
       {/* Input Area */}
       <div className="askpage-input-area" onKeyDown={stopPropagation} onKeyUp={stopPropagation} onKeyPress={stopPropagation}>
-        <textarea
-          ref={inputRef}
-          className="askpage-input"
-          value={input}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          onFocus={() => {
-            // On mobile, scroll the input into view after the keyboard finishes animating
-            setTimeout(() => {
-              inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }, 300);
-          }}
-          placeholder={isFullScreen ? "Type a message..." : "Ask about this page…"}
-          rows={1}
-          disabled={isStreaming}
-        />
+        <div className="askpage-input-wrapper">
+          <textarea
+            ref={inputRef}
+            className="askpage-input"
+            value={input}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            onFocus={() => {
+              // On mobile, scroll the input into view after the keyboard finishes animating
+              setTimeout(() => {
+                inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              }, 300);
+            }}
+            placeholder={isFullScreen ? "Type a message..." : "Ask about this page…"}
+            rows={1}
+            disabled={isStreaming}
+          />
+        </div>
         {isStreaming ? (
           <button className="askpage-send-btn" onClick={abortStream} title="Stop">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="6" y="6" width="12" height="12" rx="2"/>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="5" y="5" width="14" height="14" rx="2"/>
             </svg>
           </button>
         ) : (
@@ -942,9 +957,8 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
             disabled={!input.trim()}
             title="Send"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"/>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 19V5M5 12l7-7 7 7"/>
             </svg>
           </button>
         )}

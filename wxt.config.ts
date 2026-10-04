@@ -10,6 +10,12 @@ export default defineConfig({
       ? ['tabs', 'tabGroups', 'storage', 'scripting', 'debugger', 'bookmarks', 'webRequest', 'webRequestBlocking']
       : ['tabs', 'tabGroups', 'storage', 'scripting', 'debugger', 'bookmarks', 'declarativeNetRequest', 'declarativeNetRequestWithHostAccess'],
     host_permissions: ['<all_urls>'],
+    web_accessible_resources: [
+      {
+        resources: ['fonts/*'],
+        matches: ['<all_urls>'],
+      },
+    ],
     commands: {
       _execute_action: {
         suggested_key: {

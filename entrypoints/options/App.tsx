@@ -229,7 +229,7 @@ export default function App() {
         </button>
         <div className="mobile-header-logo">
           <img src={iconUrl} alt="BrowserBot" width="32" height="32" style={{ display: 'block', borderRadius: '8px' }} />
-          <span>BrowserBot</span>
+          <span><b>BrowserBot</b></span>
         </div>
       </div>
 
@@ -238,7 +238,7 @@ export default function App() {
       <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`}>
         <div className="sidebar-logo">
           <img src={iconUrl} alt="BrowserBot" width="32" height="32" style={{ display: 'block', borderRadius: '8px' }} />
-          <span>BrowserBot</span>
+          <span><b>BrowserBot</b></span>
         </div>
         <nav>
           <button

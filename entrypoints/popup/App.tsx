@@ -230,7 +230,7 @@ export default function App() {
             <img src={iconUrl} alt="BrowserBot" width="28" height="28" style={{ display: 'block', borderRadius: '6px' }} />
           </div>
           <div className="logo-text">
-            <h2>BrowserBot</h2>
+            <h2><b>BrowserBot</b></h2>
             <span className="tab-badge">{tabCount} tabs</span>
           </div>
         </div>
@@ -246,8 +246,8 @@ export default function App() {
       {view === 'home' && (
         <div className="actions-list">
           <button className="action-card" onClick={() => setView('group-tabs')}>
-            <div className="action-icon" style={{ background: 'linear-gradient(135deg, #6c5ce7, #a29bfe)' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <div className="action-icon" style={{ background: '#ffd45e', color: '#2a2622' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="7" height="7" rx="1"/>
                 <rect x="14" y="3" width="7" height="7" rx="1"/>
                 <rect x="3" y="14" width="7" height="7" rx="1"/>
@@ -268,11 +268,10 @@ export default function App() {
                 // Background may not be ready — ignore
               }
               // Small delay so background can process the message before popup closes
-              // (especially needed on Firefox Android where popup close is aggressive)
               setTimeout(() => window.close(), 150);
             }}>
-            <div className="action-icon" style={{ background: 'linear-gradient(135deg, #00b894, #55efc4)' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <div className="action-icon" style={{ background: '#ffe3d8', color: '#b02f17' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
               </svg>
             </div>
@@ -284,8 +283,8 @@ export default function App() {
           </button>
 
           <button className="action-card" onClick={() => { setView('bookmarks'); setBStatus(''); setBPlan(null); }}>
-            <div className="action-icon" style={{ background: 'linear-gradient(135deg, #f9a825, #ff6f00)' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <div className="action-icon" style={{ background: '#fff1a8', color: '#78350f' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
               </svg>
             </div>
@@ -297,8 +296,8 @@ export default function App() {
           </button>
 
           <button className="action-card" onClick={() => setView('devtools-info')}>
-            <div className="action-icon" style={{ background: 'linear-gradient(135deg, #e17055, #fd79a8)' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <div className="action-icon" style={{ background: '#fff3d6', color: '#e0482c' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="4 17 10 11 4 5"/>
                 <line x1="12" y1="19" x2="20" y2="19"/>
               </svg>
@@ -376,9 +375,23 @@ export default function App() {
           </button>
 
           {/* Sub-tab switcher */}
-          <div style={{ display:'flex', gap:'4px', marginBottom:'10px' }}>
+          <div style={{ display:'flex', gap:'8px', marginBottom:'12px' }}>
             {(['organize','ask'] as BookmarksTab[]).map(t => (
-              <button key={t} onClick={() => setBTab(t)} style={{ flex:1, padding:'6px', fontSize:'12px', fontWeight:600, borderRadius:'6px', border:'1px solid #e5e7eb', background: bTab===t ? '#f9a825' : '#f9fafb', color: bTab===t ? '#fff' : '#374151', cursor:'pointer', textTransform:'capitalize' }}>{t === 'organize' ? '🗂 Organize' : '💬 Ask'}</button>
+              <button 
+                key={t} 
+                onClick={() => setBTab(t)} 
+                className="bookmarks-tab-btn"
+                style={{ 
+                  flex: 1, 
+                  padding: '7px', 
+                  fontSize: '17px', 
+                  background: bTab === t ? 'var(--ac)' : 'var(--sub)', 
+                  color: bTab === t ? 'var(--acfg)' : 'var(--fg)', 
+                  cursor: 'pointer' 
+                }}
+              >
+                {t === 'organize' ? '🗂 Organize' : '💬 Ask'}
+              </button>
             ))}
           </div>
 
@@ -401,19 +414,19 @@ export default function App() {
 
               {/* Confirmation panel */}
               {bPlan && !bLoading && (
-                <div style={{ background:'#fffbeb', border:'1px solid #fcd34d', borderRadius:'8px', padding:'10px', marginTop:'8px', fontSize:'12px' }}>
-                  <div style={{fontWeight:600, marginBottom:'4px', color:'#92400e'}}>⚡ Review Plan</div>
-                  <div style={{color:'#78350f'}}>📁 {bPlan.createFolders.length} new folder(s) will be created</div>
-                  <div style={{color:'#78350f'}}>🔀 {bPlan.moves.length} bookmark(s) will be moved</div>
-                  <div style={{display:'flex', gap:'6px', marginTop:'8px'}}>
-                    <button className="btn primary-btn" style={{flex:1, padding:'7px', fontSize:'12px'}} onClick={applyPlan}>Apply Changes</button>
-                    <button className="btn" style={{padding:'7px 10px', fontSize:'12px', border:'1px solid #d1d5db', borderRadius:'6px', background:'#fff', cursor:'pointer'}} onClick={() => setBPlan(null)}>Cancel</button>
+                <div style={{ background:'var(--sub)', border:'1.5px solid var(--bd)', borderRadius:'var(--rs)', padding:'10px', marginTop:'8px', fontSize:'12.5px', boxShadow:'var(--sh-sm)' }}>
+                  <div style={{fontWeight:700, fontFamily:'var(--hfont)', fontSize:'18px', marginBottom:'4px', color:'var(--act)'}}>⚡ Review Plan</div>
+                  <div style={{color:'var(--fg)'}}>📁 {bPlan.createFolders.length} new folder(s) will be created</div>
+                  <div style={{color:'var(--fg)'}}>🔀 {bPlan.moves.length} bookmark(s) will be moved</div>
+                  <div style={{display:'flex', gap:'8px', marginTop:'10px'}}>
+                    <button className="btn primary-btn" style={{flex:1, padding:'6px 10px', fontSize:'18px'}} onClick={applyPlan}>Apply Changes</button>
+                    <button className="btn" style={{padding:'6px 12px', fontSize:'18px', border:'1.5px solid var(--bd)', background:'var(--pbg)', color:'var(--fg)', cursor:'pointer'}} onClick={() => setBPlan(null)}>Cancel</button>
                   </div>
                 </div>
               )}
 
               {!bPlan && (
-                <button className={`btn primary-btn ${bLoading ? 'loading-pulse' : ''}`} style={{marginTop:'8px', background:'linear-gradient(135deg,#f9a825,#ff6f00)', border:'none'}} onClick={loadBookmarks} disabled={bLoading}>
+                <button className={`btn primary-btn ${bLoading ? 'loading-pulse' : ''}`} style={{marginTop:'8px'}} onClick={loadBookmarks} disabled={bLoading}>
                   {bLoading ? 'Analyzing…' : 'Analyze & Organize'}
                 </button>
               )}
@@ -424,20 +437,32 @@ export default function App() {
           {bTab === 'ask' && (
             <div className="glass-card" style={{display:'flex', flexDirection:'column', gap:'8px'}}>
               <h3 className="subview-title">Ask Bookmarks</h3>
-              <p style={{fontSize:'12px', color:'#6b7280', margin:0}}>Ask anything about your bookmarks — find tools, games, videos, or any pattern you're looking for.</p>
+              <p style={{fontSize:'12px', color:'var(--mute)', margin:0}}>Ask anything about your bookmarks — find tools, games, videos, or any pattern you're looking for.</p>
 
-              <div ref={bChatRef} style={{maxHeight:'200px', overflowY:'auto', display:'flex', flexDirection:'column', gap:'6px'}}>
-                {bMessages.length === 0 && <p style={{fontSize:'12px', color:'#9ca3af', textAlign:'center', margin:'12px 0'}}>Try: "Find any GitHub links" or "Do I have any cooking sites?"</p>}
+              <div ref={bChatRef} style={{maxHeight:'200px', overflowY:'auto', display:'flex', flexDirection:'column', gap:'6px', padding:'4px 0'}}>
+                {bMessages.length === 0 && <p style={{fontSize:'13px', color:'var(--mute)', fontStyle:'italic', textAlign:'center', margin:'12px 0'}}>Try: "Find any GitHub links" or "Do I have any cooking sites?"</p>}
                 {bMessages.map((m, i) => (
-                  <div key={i} style={{padding:'6px 10px', borderRadius:'8px', fontSize:'12px', lineHeight:'1.5', maxWidth:'90%', alignSelf: m.role==='user'?'flex-end':'flex-start', background: m.role==='user'?'#f9a825':'#f3f4f6', color: m.role==='user'?'#fff':'#1f2937'}}>
+                  <div key={i} style={{
+                    padding:'7px 11px',
+                    borderRadius:'12px',
+                    fontSize:'12.5px',
+                    lineHeight:'1.5',
+                    maxWidth:'88%',
+                    alignSelf: m.role==='user'?'flex-end':'flex-start',
+                    background: m.role==='user'?'var(--ub)':'var(--pbg)',
+                    color: m.role==='user'?'var(--ubf)':'var(--fg)',
+                    border: '1.5px solid var(--bd)',
+                    boxShadow: '1.5px 1.5px 0 var(--bd)',
+                    transform: m.role==='user'?'rotate(0.5deg)':'rotate(-0.5deg)'
+                  }}>
                     {m.content || <span style={{opacity:.4}}>…</span>}
                   </div>
                 ))}
               </div>
 
-              <div style={{display:'flex', gap:'6px'}}>
+              <div style={{display:'flex', gap:'6px', marginTop:'4px'}}>
                 <input
-                  style={{flex:1, padding:'7px 10px', fontSize:'12px', border:'1px solid #e5e7eb', borderRadius:'6px', outline:'none'}}
+                  style={{flex:1, padding:'7px 10px', fontSize:'12.5px', border:'1.5px solid var(--bd)', borderRadius:'var(--rs)', background:'var(--sub)', color:'var(--fg)', outline:'none'}}
                   value={bInput} onChange={e => setBInput(e.target.value)}
                   onKeyDown={e => e.key==='Enter' && !e.shiftKey && sendBMsg()}
                   placeholder="Ask about your bookmarks…"
@@ -445,11 +470,12 @@ export default function App() {
                 />
                 <button
                   onClick={sendBMsg} disabled={bStreaming || !bInput.trim()}
-                  style={{padding:'7px 12px', fontSize:'12px', fontWeight:600, borderRadius:'6px', border:'none', background:'#f9a825', color:'#fff', cursor: bStreaming||!bInput.trim()?'not-allowed':'pointer', opacity: bStreaming||!bInput.trim()?0.6:1}}
+                  className="btn primary-btn"
+                  style={{width:'auto', padding:'6px 14px', fontSize:'17px'}}
                 >Send</button>
               </div>
               {bMessages.length > 0 && (
-                <button onClick={() => setBMessages([])} style={{fontSize:'11px', background:'none', border:'none', color:'#9ca3af', cursor:'pointer', alignSelf:'center'}}>Clear chat</button>
+                <button onClick={() => setBMessages([])} style={{fontSize:'12px', background:'none', border:'none', color:'var(--mute)', cursor:'pointer', alignSelf:'center', marginTop:'4px'}}>Clear chat</button>
               )}
             </div>
           )}

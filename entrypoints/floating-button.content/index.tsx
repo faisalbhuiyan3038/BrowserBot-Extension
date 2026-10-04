@@ -1,4 +1,4 @@
-import { getStyles } from '../../utils/chatStyles';
+import { getStyles, getRoughFilterSVG } from '../../utils/chatStyles';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -49,6 +49,10 @@ export default defineContentScript({
           style.textContent = getStyles();
           const shadowRoot = container.getRootNode() as ShadowRoot;
           shadowRoot.appendChild(style);
+
+          const filterContainer = document.createElement('div');
+          filterContainer.innerHTML = getRoughFilterSVG();
+          shadowRoot.appendChild(filterContainer);
 
           const wrapper = document.createElement('div');
           wrapper.id = 'browserbot-floating-btn';
