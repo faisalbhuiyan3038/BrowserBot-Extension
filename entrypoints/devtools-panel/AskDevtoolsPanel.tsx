@@ -198,7 +198,16 @@ export default function AskDevtoolsPanel() {
         setThinkingContent('');
       } else if (message.type === 'ASK_PAGE_CHAT_ERROR') {
         setIsStreaming(false);
-        setMessages(prev => [...prev, { role: 'error', content: message.error }]);
+        streamingContentRef.current = '';
+        streamingThinkingRef.current = '';
+        setThinkingContent('');
+        setMessages(prev => {
+          const lastIdx = prev.length - 1;
+          const updated = (lastIdx >= 0 && prev[lastIdx].role === 'assistant' && !prev[lastIdx].content)
+            ? prev.slice(0, lastIdx)
+            : prev;
+          return [...updated, { role: 'error', content: message.error }];
+        });
       }
     };
     browser.runtime.onMessage.addListener(listener);
@@ -242,6 +251,7 @@ export default function AskDevtoolsPanel() {
   const startNewChat = () => {
     setMessages([]);
     setActiveConversationId(null);
+    sessionIdRef.current = generateUUID();
     streamingContentRef.current = '';
     setShowHistory(false);
   };
@@ -675,7 +685,10 @@ export default function AskDevtoolsPanel() {
   };
 
   const abortStream = () => {
-    browser.runtime.sendMessage({ type: 'ASK_PAGE_CHAT_ABORT' });
+    browser.runtime.sendMessage({
+      type: 'ASK_PAGE_CHAT_ABORT',
+      sessionId: sessionIdRef.current
+    }).catch(() => {});
     setIsStreaming(false);
   };
   

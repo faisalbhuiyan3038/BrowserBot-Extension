@@ -281,7 +281,13 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
         streamingContentRef.current = '';
         streamingThinkingRef.current = '';
         setThinkingContent('');
-        setMessages(prev => [...prev, { role: 'error', content: message.error }]);
+        setMessages(prev => {
+          const lastIdx = prev.length - 1;
+          const updated = (lastIdx >= 0 && prev[lastIdx].role === 'assistant' && !prev[lastIdx].content)
+            ? prev.slice(0, lastIdx)
+            : prev;
+          return [...updated, { role: 'error', content: message.error }];
+        });
       } else if (message.type === 'CHAT_UPDATED') {
         // Real-time sync from other tabs
         if (persistChat && message.messages && !isStreaming) {
