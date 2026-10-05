@@ -117,13 +117,6 @@ export default defineBackground(() => {
 
   // ─── Message Router ────────────────────────────────────────
   browser.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendResponse) => {
-    if (message.type === 'OPEN_CHAT_TAB') {
-      browser.tabs.create({ url: browser.runtime.getURL('/chat.html' as any) })
-        .then(() => sendResponse({ success: true }))
-        .catch(err => sendResponse({ error: err.message }));
-      return true;
-    }
-
     if (message.type === 'TOGGLE_ASK_PAGE') {
       handleToggleAskPage(message, sender);
       return false;

@@ -101,7 +101,7 @@ This document tracks the incremental, behavior-preserving refactoring of the Bro
 
 ### Phase 2.3: Foundational Architectural Cleanup & Dead Code Removal (P1, P2)
 
-- [ ] **Task 6: Remove dead content script monkey-patching, unused `debugger` permission, and dead handler**
+- [x] **Task 6: Remove dead content script monkey-patching, unused `debugger` permission, and dead handler**
   - **Problem IDs**: PRB-09, PRB-14, PRB-17
   - **Goal**: Delete 95 lines of inactive isolated-world console/fetch monkey-patching; remove `'debugger'` permission from `wxt.config.ts`; remove uncalled `OPEN_CHAT_TAB` handler.
   - **Files**: `entrypoints/ask-page.content/index.tsx`, `wxt.config.ts`, `entrypoints/background.ts`

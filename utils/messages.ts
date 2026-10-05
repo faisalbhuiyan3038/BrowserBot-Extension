@@ -18,7 +18,6 @@ export interface TabContentResult {
 }
 
 export type RuntimeMessage =
-  | { type: 'OPEN_CHAT_TAB' }
   | { type: 'TOGGLE_ASK_PAGE'; pageTitle?: string; pageUrl?: string }
   | {
       type: 'ASK_PAGE_CHAT';

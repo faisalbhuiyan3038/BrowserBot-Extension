@@ -11,8 +11,8 @@ export default defineConfig({
     name: 'BrowserBot - AI-Powered Browser Automation',
     description: 'Automate Tab Groups, Organize Bookmarks, Ask Tabs all with 3 AI Providers (OpenAI API, Ollama and built-in Chrome AI)',
     permissions: browser === 'firefox'
-      ? ['tabs', 'tabGroups', 'storage', 'scripting', 'debugger', 'bookmarks', 'webRequest', 'webRequestBlocking']
-      : ['tabs', 'tabGroups', 'storage', 'scripting', 'debugger', 'bookmarks', 'declarativeNetRequest', 'declarativeNetRequestWithHostAccess'],
+      ? ['tabs', 'tabGroups', 'storage', 'scripting', 'bookmarks', 'webRequest', 'webRequestBlocking']
+      : ['tabs', 'tabGroups', 'storage', 'scripting', 'bookmarks', 'declarativeNetRequest', 'declarativeNetRequestWithHostAccess'],
     host_permissions: ['<all_urls>'],
     web_accessible_resources: [
       {
