@@ -1,5 +1,6 @@
 import { streamChatWithAI, checkChromeAIStatus, downloadChromeAIModel, ChatMessage } from '../utils/askPageAI';
 import { AppStorage, ConversationStorage, SessionChatStorage, AIProviderType } from '../utils/storage';
+import type { RuntimeMessage } from '../utils/messages';
 
 export default defineBackground(() => {
   console.log('BrowserBot background ready', { id: browser.runtime.id });
@@ -115,7 +116,7 @@ export default defineBackground(() => {
   })();
 
   // ─── Message Router ────────────────────────────────────────
-  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  browser.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendResponse) => {
     if (message.type === 'OPEN_CHAT_TAB') {
       browser.tabs.create({ url: browser.runtime.getURL('/chat.html' as any) })
         .then(() => sendResponse({ success: true }))
@@ -140,12 +141,16 @@ export default defineBackground(() => {
     }
 
     if (message.type === 'GET_TAB_LIST') {
-      handleGetTabList().then(sendResponse);
+      handleGetTabList()
+        .then(sendResponse)
+        .catch(() => sendResponse([]));
       return true;
     }
 
     if (message.type === 'GET_TAB_CONTENT') {
-      handleGetTabContent(message.tabId).then(sendResponse);
+      handleGetTabContent(message.tabId)
+        .then(sendResponse)
+        .catch(err => sendResponse({ tabId: message.tabId, title: 'Unknown', url: '', content: `(Error: ${err?.message || 'Failed'})` }));
       return true;
     }
 
@@ -195,7 +200,9 @@ export default defineBackground(() => {
 
     // ─── Chrome AI status & download ───
     if (message.type === 'CHECK_CHROME_AI') {
-      checkChromeAIStatus().then(sendResponse);
+      checkChromeAIStatus()
+        .then(sendResponse)
+        .catch(err => sendResponse({ available: 'no', error: err?.message || 'Check failed' }));
       return true;
     }
 

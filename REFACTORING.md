@@ -88,7 +88,7 @@ This document tracks the incremental, behavior-preserving refactoring of the Bro
 
 ### Phase 2.2: Safety Nets & Message Contracts (P1)
 
-- [ ] **Task 5: Strongly typed runtime message contract and unhandled rejection guards**
+- [x] **Task 5: Strongly typed runtime message contract and unhandled rejection guards**
   - **Problem IDs**: PRB-07, PRB-20
   - **Goal**: Introduce a centralized discriminated union for all extension runtime messages; add `.catch()` to all async message handlers in `background.ts`.
   - **Files**: `utils/messages.ts` (new), `entrypoints/background.ts`
