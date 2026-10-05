@@ -349,6 +349,35 @@ export const ConversationStorage = {
   }
 };
 
+// ─── Session Chat Storage (Firefox MV2 fallback wrapper) ─────
+export const SessionChatStorage = {
+  saveChat: async (messages: any[]): Promise<void> => {
+    if (browser.storage?.session) {
+      await browser.storage.session.set({ askPageChat: messages });
+    } else {
+      await browser.storage.local.set({ _session_askPageChat: messages });
+    }
+  },
+
+  loadChat: async (): Promise<any[]> => {
+    if (browser.storage?.session) {
+      const data = await browser.storage.session.get('askPageChat');
+      return (data as any)?.askPageChat || [];
+    } else {
+      const data = await browser.storage.local.get('_session_askPageChat');
+      return (data as any)?._session_askPageChat || [];
+    }
+  },
+
+  clearChat: async (): Promise<void> => {
+    if (browser.storage?.session) {
+      await browser.storage.session.remove('askPageChat');
+    } else {
+      await browser.storage.local.remove('_session_askPageChat');
+    }
+  }
+};
+
 export function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
 }

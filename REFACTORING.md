@@ -57,7 +57,7 @@ This document tracks the incremental, behavior-preserving refactoring of the Bro
   - **Rollback Note**: Revert changes to `AskDevtoolsPanel.tsx` and `AskPagePanel.tsx`.
   - **Parallel-safe**: Yes
 
-- [ ] **Task 2: Firefox MV2 session storage fallback**
+- [x] **Task 2: Firefox MV2 session storage fallback**
   - **Problem IDs**: PRB-03
   - **Goal**: Provide a safe session storage fallback wrapper (`browser.storage.session ?? browser.storage.local`) in background for Firefox MV2.
   - **Files**: `entrypoints/background.ts`, `utils/storage.ts`

@@ -1,5 +1,5 @@
 import { streamChatWithAI, checkChromeAIStatus, downloadChromeAIModel, ChatMessage } from '../utils/askPageAI';
-import { AppStorage, ConversationStorage, AIProviderType } from '../utils/storage';
+import { AppStorage, ConversationStorage, SessionChatStorage, AIProviderType } from '../utils/storage';
 
 export default defineBackground(() => {
   console.log('BrowserBot background ready', { id: browser.runtime.id });
@@ -108,6 +108,9 @@ export default defineBackground(() => {
         const removed = await ConversationStorage.clearOld(state.askPageAutoDeleteDays);
         if (removed > 0) console.log(`Cleaned ${removed} old conversations`);
       }
+      if (!browser.storage?.session) {
+        await SessionChatStorage.clearChat();
+      }
     } catch (_) {}
   })();
 
@@ -153,23 +156,24 @@ export default defineBackground(() => {
 
     // ─── Chat persistence (session-based for cross-tab sync) ───
     if (message.type === 'SAVE_CHAT') {
-      browser.storage.session.set({ askPageChat: message.messages }).then(() => {
+      SessionChatStorage.saveChat(message.messages).then(() => {
         // Broadcast update to all tabs except sender
         broadcastToTabs('CHAT_UPDATED', { messages: message.messages }, sender.tab?.id);
-      });
+      }).catch(() => {});
       return false;
     }
 
     if (message.type === 'LOAD_CHAT') {
-      browser.storage.session.get('askPageChat').then((data: any) => {
-        sendResponse(data.askPageChat || []);
+      SessionChatStorage.loadChat().then((messages) => {
+        sendResponse(messages);
       }).catch(() => sendResponse([]));
       return true;
     }
 
     if (message.type === 'CLEAR_CHAT') {
-      browser.storage.session.remove('askPageChat');
-      broadcastToTabs('CHAT_UPDATED', { messages: [] }, sender.tab?.id);
+      SessionChatStorage.clearChat().then(() => {
+        broadcastToTabs('CHAT_UPDATED', { messages: [] }, sender.tab?.id);
+      }).catch(() => {});
       return false;
     }
 
