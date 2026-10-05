@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
-import { AppStorage, OpenAIProvider, AIProviderType, ChatMsg, Conversation, generateId, generateUUID } from '../../utils/storage';
+import { AppStorage, OpenAIProvider, AIProviderType, ChatMsg, Conversation, generateUUID } from '../../utils/storage';
 
 marked.setOptions({ breaks: true, gfm: true });
 
@@ -226,7 +226,7 @@ export default function AskDevtoolsPanel() {
     const firstUserMsg = messages.find(m => m.role === 'user');
     const title = '[DevTools] ' + (firstUserMsg?.content.slice(0, 80) || 'New Chat');
     const conversation: Conversation = {
-      id: activeConversationId || generateId(),
+      id: activeConversationId || generateUUID(),
       title,
       createdAt: activeConversationId ? (conversations.find(c => c.id === activeConversationId)?.createdAt || Date.now()) : Date.now(),
       updatedAt: Date.now(),

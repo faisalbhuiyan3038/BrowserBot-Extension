@@ -403,10 +403,6 @@ export const SessionChatStorage = {
   }
 };
 
-export function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
-}
-
 export function generateUUID(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     try {
@@ -420,4 +416,9 @@ export function generateUUID(): string {
     return v.toString(16);
   });
 }
+
+/**
+ * @deprecated Use `generateUUID()` directly for standard RFC4122 v4 identifiers.
+ */
+export const generateId = generateUUID;
 

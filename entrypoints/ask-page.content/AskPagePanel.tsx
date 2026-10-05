@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
-import { AppStorage, SystemPrompt, OpenAIProvider, AIProviderType, ExtractionAlgorithm, Conversation, ChatMsg, generateId, generateUUID } from '../../utils/storage';
+import { AppStorage, SystemPrompt, OpenAIProvider, AIProviderType, ExtractionAlgorithm, Conversation, ChatMsg, generateUUID } from '../../utils/storage';
 import { extractPageContent } from '../../utils/extractor';
 
 // Hardcoded instruction always appended to Ask Page system prompts
@@ -195,7 +195,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     const title = firstUserMsg?.content.slice(0, 80) || 'New Chat';
 
     const conversation: Conversation = {
-      id: activeConversationId || generateId(),
+      id: activeConversationId || generateUUID(),
       title,
       createdAt: activeConversationId ? (conversations.find(c => c.id === activeConversationId)?.createdAt || Date.now()) : Date.now(),
       updatedAt: Date.now(),

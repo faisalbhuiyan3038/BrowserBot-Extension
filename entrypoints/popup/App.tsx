@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import iconUrl from '../../assets/icon.svg';
 import { groupTabsWithAI, TabInfo, ExistingGroup, organizeBookmarksWithAI } from '../../utils/ai';
-import { AppStorage, SystemPrompt } from '../../utils/storage';
+import { AppStorage, SystemPrompt, generateUUID } from '../../utils/storage';
 import {
   getBookmarkTree, buildBookmarkListText, buildFolderListText, buildDomainList, buildRootParentList,
   applyOrganizePlan, FlatBookmark, FlatFolder, OrganizePlan
@@ -35,7 +35,7 @@ export default function App() {
   const [bInput, setBInput] = useState('');
   const [bStreaming, setBStreaming] = useState(false);
   const bChatRef = useRef<HTMLDivElement>(null);
-  const bSessionId = useRef(Math.random().toString(36).slice(2));
+  const bSessionId = useRef(generateUUID());
 
   // Scroll ask-bookmarks chat to bottom
   useEffect(() => { if (bChatRef.current) bChatRef.current.scrollTop = bChatRef.current.scrollHeight; }, [bMessages]);

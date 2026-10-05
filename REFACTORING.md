@@ -119,7 +119,7 @@ This document tracks the incremental, behavior-preserving refactoring of the Bro
   - **Rollback Note**: Delete `utils/aiCommon.ts` and revert `utils/ai.ts` and `utils/askPageAI.ts`.
   - **Parallel-safe**: No
 
-- [ ] **Task 8: Standardize ID generation**
+- [x] **Task 8: Standardize ID generation**
   - **Problem IDs**: PRB-19
   - **Goal**: Standardize on RFC4122 v4 UUID generator (`generateUUID`) across storage, chat, and sessions; deprecate redundant generators.
   - **Files**: `utils/storage.ts`, `entrypoints/popup/App.tsx`

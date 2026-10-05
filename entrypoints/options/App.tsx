@@ -5,7 +5,7 @@ import {
   AIProviderType, ExtractionAlgorithm, OpenAIProvider, SystemPrompt,
   PROMPT_VARIABLES, ASK_PAGE_PROMPT_VARIABLES, DEVTOOLS_PROMPT_VARIABLES,
   BOOKMARK_ORGANIZE_VARIABLES, DEFAULT_DEVTOOLS_SYSTEM_PROMPT,
-  DEFAULT_BOOKMARK_ORGANIZE_PROMPT, generateId
+  DEFAULT_BOOKMARK_ORGANIZE_PROMPT, generateUUID
 } from '../../utils/storage';
 
 type Page = 'providers' | 'tab-grouping' | 'ask-page' | 'ask-devtools' | 'bookmarks';
@@ -118,7 +118,7 @@ export default function App() {
 
   // ── OpenAI provider CRUD ──
   const addProvider = () => {
-    setEditingProvider({ id: generateId(), name: '', endpoint: '', apiKey: '', model: '', reasoning: false });
+    setEditingProvider({ id: generateUUID(), name: '', endpoint: '', apiKey: '', model: '', reasoning: false });
   };
   const saveProvider = (p: OpenAIProvider) => {
     const exists = state.openaiProviders.some(x => x.id === p.id);
@@ -138,7 +138,7 @@ export default function App() {
 
   // ── Tab Grouping Prompt CRUD ──
   const addPrompt = () => {
-    setEditingPrompt({ id: generateId(), name: '', prompt: '' });
+    setEditingPrompt({ id: generateUUID(), name: '', prompt: '' });
   };
   const savePrompt = (p: SystemPrompt) => {
     const exists = state.tabGroupPrompts.some(x => x.id === p.id);
@@ -159,7 +159,7 @@ export default function App() {
 
   // ── Ask Page Quick Prompt CRUD ──
   const addAskPrompt = () => {
-    setEditingAskPrompt({ id: generateId(), name: '', prompt: '' });
+    setEditingAskPrompt({ id: generateUUID(), name: '', prompt: '' });
   };
   const saveAskPrompt = (p: SystemPrompt) => {
     const exists = state.askPagePrompts.some(x => x.id === p.id);
