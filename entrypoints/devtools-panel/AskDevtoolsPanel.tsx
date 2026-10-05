@@ -1,91 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
 import { AppStorage, OpenAIProvider, AIProviderType, ChatMsg, Conversation, generateUUID } from '../../utils/storage';
+import { DevtoolsSidebar } from './components/DevtoolsSidebar';
+import { DevtoolsChatArea } from './components/DevtoolsChatArea';
+import type { DevToolsConfig, DevToolsData } from './types';
+import { inferInitiator } from './types';
 
 marked.setOptions({ breaks: true, gfm: true });
-
-interface DevToolsConfig {
-  console: boolean;
-  network: boolean;
-  dom: boolean;
-  performance: boolean;
-  networkHeaders: boolean;
-  networkCookies: boolean;
-  networkPayload: boolean;
-  networkResponseBody: boolean;
-  networkDisplayMode: 'summary' | 'details' | 'both';
-  includeHtml: boolean;
-  includeCss: boolean;
-  includeJs: boolean;
-  cookieValues: boolean;
-  allowLargeBodies: boolean;
-}
-
-interface LogEntry {
-  id: string;
-  ts: number;
-  level: string;
-  text: string;
-  stack?: string;
-}
-
-interface NetworkEntry {
-  id: string;
-  method: string;
-  url: string;
-  status: number;
-  duration: number;
-  mimeType?: string;
-  size?: number;
-}
-
-interface DevToolsData {
-  logs?: LogEntry[];
-  network?: NetworkEntry[];
-  dom?: any;
-  performance?: any;
-  metadata?: any;
-}
-
-/**
- * Infer the initiator type for a HAR network entry in a cross-browser way.
- *
- * Chrome exposes `entry._initiator.type` (e.g. "parser", "script", "other").
- * Firefox does not populate `_initiator` at all, so we apply a cascade of
- * heuristics to produce a useful label instead of always returning "unknown":
- *
- *  1. _initiator.type        – Chrome/Edge (non-standard but reliable)
- *  2. _resourceType          – Chrome/Edge DevTools internal type
- *  3. URL file extension     – works in both browsers
- *  4. Referer request header – indicates the page that triggered the request
- *  5. 'other'                – explicit fallback (better than 'unknown')
- */
-function inferInitiator(entry: any): string {
-  // 1. Chrome _initiator (best signal)
-  if (entry._initiator?.type) return entry._initiator.type;
-
-  // 2. Chrome _resourceType (script, stylesheet, document, xhr, fetch, …)
-  if (entry._resourceType) return entry._resourceType;
-
-  // 3. Infer from URL file extension
-  try {
-    const url = new URL(entry.request.url);
-    const ext = url.pathname.split('.').pop()?.toLowerCase() || '';
-    if (['js', 'mjs', 'ts'].includes(ext)) return 'script';
-    if (['css'].includes(ext)) return 'stylesheet';
-    if (['html', 'htm'].includes(ext)) return 'document';
-    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico', 'avif'].includes(ext)) return 'image';
-    if (['woff', 'woff2', 'ttf', 'eot', 'otf'].includes(ext)) return 'font';
-  } catch (_) {}
-
-  // 4. Presence of a Referer header → triggered by the page (parser or script)
-  const headers: Array<{ name: string; value: string }> = entry.request.headers || [];
-  const hasReferer = headers.some(h => h.name.toLowerCase() === 'referer');
-  if (hasReferer) return 'parser';
-
-  // 5. Explicit non-empty fallback
-  return 'other';
-}
 
 export default function AskDevtoolsPanel() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -704,442 +625,68 @@ export default function AskDevtoolsPanel() {
     setSelectedLogIds(next);
   };
 
-  // ── helpers ──────────────────────────────────────────────────────────────
-  const S = {
-    // sidebar
-    sidebar: (collapsed: boolean): React.CSSProperties => ({
-      width: collapsed ? '44px' : '360px',
-      minWidth: collapsed ? '44px' : '360px',
-      background: 'var(--sub)',
-      borderRight: '2px solid var(--bd)',
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden',
-      transition: 'width 0.2s ease, min-width 0.2s ease',
-      position: 'relative',
-    }),
-    card: (): React.CSSProperties => ({
-      background: 'var(--pbg)',
-      border: '1.5px solid var(--bd)',
-      borderRadius: '16px 12px 18px 14px / 14px 18px 12px 16px',
-      padding: '12px',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '8px',
-      boxShadow: 'var(--sh-sm)',
-    }),
-    sectionTitle: (): React.CSSProperties => ({
-      fontSize: '16px',
-      fontWeight: 700,
-      fontFamily: 'var(--hfont)',
-      letterSpacing: '0.02em',
-      color: 'var(--act)',
-      marginBottom: '2px',
-    }),
-    label: (indent = false): React.CSSProperties => ({
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-      fontSize: '12.5px',
-      color: 'var(--fg)',
-      cursor: 'pointer',
-      marginLeft: indent ? '20px' : 0,
-      fontFamily: 'var(--font)',
-    }),
-    badge: (color: string): React.CSSProperties => ({
-      fontSize: '10px',
-      fontWeight: 700,
-      padding: '2px 7px',
-      borderRadius: 'var(--rx)',
-      background: color === '#374151' ? 'var(--sub)' : color,
-      color: color === '#374151' ? 'var(--fg)' : '#fff',
-      border: '1px solid var(--bd)',
-      marginLeft: 'auto',
-    }),
-    btn: (primary = false, disabled = false): React.CSSProperties => ({
-      padding: primary ? '8px 12px' : '6px 12px',
-      flex: primary ? 1 : undefined,
-      fontSize: '17px',
-      fontWeight: 700,
-      fontFamily: 'var(--hfont)',
-      borderRadius: '12px 9px 12px 9px',
-      border: '1.5px solid var(--bd)',
-      background: primary ? (disabled ? 'var(--mute)' : 'var(--ac)') : 'var(--pbg)',
-      color: primary ? (disabled ? 'var(--sub)' : 'var(--acfg)') : 'var(--fg)',
-      cursor: disabled ? 'not-allowed' : 'pointer',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: '6px',
-      opacity: disabled ? 0.6 : 1,
-      boxShadow: disabled ? 'none' : '2px 2px 0 var(--bd)',
-      transition: 'all 0.15s',
-    }),
-    select: (): React.CSSProperties => ({
-      width: '100%',
-      padding: '6px 8px',
-      fontSize: '12.5px',
-      borderRadius: 'var(--rs)',
-      border: '1.5px solid var(--bd)',
-      background: 'var(--sub)',
-      color: 'var(--fg)',
-      fontFamily: 'var(--font)',
-    }),
-    filterInput: (): React.CSSProperties => ({
-      width: '100%',
-      padding: '6px 8px',
-      fontSize: '12px',
-      borderRadius: 'var(--rs)',
-      border: '1.5px solid var(--bd)',
-      background: 'var(--sub)',
-      color: 'var(--fg)',
-      boxSizing: 'border-box' as const,
-      fontFamily: 'var(--font)',
-    }),
-    listBox: (): React.CSSProperties => ({
-      maxHeight: '160px',
-      overflowY: 'auto' as const,
-      background: 'var(--pbg)',
-      border: '1.5px solid var(--bd)',
-      borderRadius: 'var(--rs)',
-      padding: '4px',
-    }),
-    listRow: (error = false): React.CSSProperties => ({
-      display: 'flex',
-      alignItems: 'flex-start',
-      gap: '6px',
-      fontSize: '11.5px',
-      padding: '3px 4px',
-      borderRadius: '4px',
-      cursor: 'pointer',
-      color: error ? 'var(--er)' : 'var(--fg)',
-    }),
-    collapseBtn: (): React.CSSProperties => ({
-      position: 'absolute' as const,
-      top: '50%',
-      right: '-12px',
-      transform: 'translateY(-50%)',
-      width: '24px',
-      height: '40px',
-      background: 'var(--sub)',
-      border: '1.5px solid var(--bd)',
-      borderRadius: '6px',
-      cursor: 'pointer',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: 'var(--fg)',
-      boxShadow: '1.5px 1.5px 0 var(--bd)',
-      zIndex: 10,
-      padding: 0,
-    }),
-  };
-
   return (
     <div style={{ display: 'flex', height: '100vh', background: 'var(--pbg)', fontFamily: 'var(--font)', color: 'var(--fg)' }}>
-
       {/* ── Sidebar ── */}
-      <div style={S.sidebar(sidebarCollapsed)}>
-        {/* Collapse toggle on the edge */}
-        <button style={S.collapseBtn()} onClick={() => setSidebarCollapsed(c => !c)} title={sidebarCollapsed ? 'Expand panel' : 'Collapse panel'}>
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            {sidebarCollapsed ? <polyline points="9 18 15 12 9 6"/> : <polyline points="15 18 9 12 15 6"/>}
-          </svg>
-        </button>
-
-        {/* Inner content — hidden when collapsed */}
-        {!sidebarCollapsed && (
-          <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ac)" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              <span style={{ fontSize: '20px', fontWeight: 700, fontFamily: 'var(--hfont)', color: 'var(--fg)' }}>Capture Settings</span>
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--mute)', marginTop: '-4px' }}>Select an element in Elements tab before capturing.</div>
-
-            {/* Console section */}
-            <div style={S.card()}>
-              <div style={S.sectionTitle()}>Console</div>
-              <label style={S.label()}>
-                <input type="checkbox" checked={config.console} onChange={e => setConfig({...config, console: e.target.checked})} />
-                Capture Console Logs
-              </label>
-              <div style={{ fontSize: '11px', color: '#6b7280', lineHeight: '1.5' }}>
-                Logs are only captured after injecting the logger script below.
-              </div>
-              <button style={{ ...S.btn(), fontSize: '12px', padding: '6px 10px', alignSelf: 'flex-start' }} onClick={injectLogger}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                Inject Logger &amp; Reload
-              </button>
-            </div>
-
-            {/* Capture sources */}
-            <div style={S.card()}>
-              <div style={S.sectionTitle()}>Capture Sources</div>
-              <label style={S.label()}>
-                <input type="checkbox" checked={config.network} onChange={e => setConfig({...config, network: e.target.checked})} />
-                Network (HAR)
-              </label>
-              <label style={S.label()}>
-                <input type="checkbox" checked={config.dom} onChange={e => setConfig({...config, dom: e.target.checked})} />
-                Selected DOM Element ($0)
-              </label>
-              <label style={S.label()}>
-                <input type="checkbox" checked={config.performance} onChange={e => setConfig({...config, performance: e.target.checked})} />
-                Performance &amp; Memory
-              </label>
-            </div>
-
-            {/* Network options */}
-            <div style={S.card()}>
-              <div style={S.sectionTitle()}>Network Options</div>
-              <div>
-                <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>Format</div>
-                <select style={S.select()} value={config.networkDisplayMode} onChange={e => setConfig({...config, networkDisplayMode: e.target.value as 'summary'|'details'|'both'})}>
-                  <option value="summary">Summary Table Only</option>
-                  <option value="details">Full Details Only</option>
-                  <option value="both">Both (Summary + Details)</option>
-                </select>
-              </div>
-              <label style={S.label()}>
-                <input type="checkbox" checked={config.networkHeaders} onChange={e => setConfig({...config, networkHeaders: e.target.checked})} />
-                Include Headers
-              </label>
-              <label style={S.label()}>
-                <input type="checkbox" checked={config.networkCookies} onChange={e => setConfig({...config, networkCookies: e.target.checked})} />
-                Include Cookies
-              </label>
-              {config.networkCookies && (
-                <label style={S.label(true)}>
-                  <input type="checkbox" checked={config.cookieValues} onChange={e => setConfig({...config, cookieValues: e.target.checked})} />
-                  Show Cookie Values
-                </label>
-              )}
-              <label style={S.label()}>
-                <input type="checkbox" checked={config.networkPayload} onChange={e => setConfig({...config, networkPayload: e.target.checked})} />
-                Include Request Payload
-              </label>
-              <label style={S.label()}>
-                <input type="checkbox" checked={config.networkResponseBody} onChange={e => setConfig({...config, networkResponseBody: e.target.checked})} />
-                Include Response Bodies
-              </label>
-              {config.networkResponseBody && (
-                <div style={{ marginLeft: '20px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                  <div style={{ fontSize: '11px', color: '#6b7280' }}>Body MIME filters</div>
-                  {(['includeHtml','includeCss','includeJs'] as const).map(k => (
-                    <label key={k} style={S.label()}>
-                      <input type="checkbox" checked={config[k]} onChange={e => setConfig({...config, [k]: e.target.checked})} />
-                      {k === 'includeHtml' ? 'HTML' : k === 'includeCss' ? 'CSS' : 'JS'}
-                    </label>
-                  ))}
-                  <label style={S.label()}>
-                    <input type="checkbox" checked={config.allowLargeBodies} onChange={e => setConfig({...config, allowLargeBodies: e.target.checked})} />
-                    Allow &gt;50KB bodies
-                  </label>
-                </div>
-              )}
-            </div>
-
-            {/* Action buttons */}
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button style={S.btn(true, isCapturing)} onClick={captureDevToolsData} disabled={isCapturing}>
-                {isCapturing
-                  ? <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/></svg> Capturing…</>
-                  : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg> Capture Snapshot</>}
-              </button>
-              <button style={S.btn(false, !capturedData)} onClick={copyContext} disabled={!capturedData} title="Copy context to clipboard">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              </button>
-            </div>
-
-            {captureStatus && (
-              <div style={{ fontSize: '12px', padding: '6px 10px', borderRadius: '6px', background: captureStatus.startsWith('✅') ? '#052e16' : '#450a0a', color: captureStatus.startsWith('✅') ? '#4ade80' : '#f87171', border: `1px solid ${captureStatus.startsWith('✅') ? '#166534' : '#7f1d1d'}` }}>
-                {captureStatus}
-              </div>
-            )}
-
-            {/* Context payload selectors */}
-            {capturedData && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#6b7280', paddingTop: '4px', borderTop: '1px solid #2a2b35' }}>Context Payload</div>
-
-                {capturedData.dom && (
-                  <label style={S.label()}>
-                    <input type="checkbox" checked={includeDom} onChange={e => setIncludeDom(e.target.checked)} />
-                    <span>$0 <strong style={{ color: '#e17055' }}>{capturedData.dom.tag}</strong></span>
-                  </label>
-                )}
-                {capturedData.performance && (
-                  <label style={S.label()}>
-                    <input type="checkbox" checked={includePerf} onChange={e => setIncludePerf(e.target.checked)} />
-                    Performance Metrics
-                  </label>
-                )}
-
-                {capturedData.logs && capturedData.logs.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#d1d5db' }}>Console Logs</span>
-                      <span style={S.badge('#374151')}>{selectedLogIds.size}/{capturedData.logs.length}</span>
-                    </div>
-                    <div style={S.listBox()}>
-                      {capturedData.logs.map(log => (
-                        <label key={log.id} style={S.listRow(log.level === 'error')}>
-                          <input type="checkbox" checked={selectedLogIds.has(log.id)} onChange={() => toggleLogId(log.id)} style={{ marginTop: '2px', flexShrink: 0 }} />
-                          <span style={{ wordBreak: 'break-all' }}>[{log.level}] {log.text.substring(0, 80)}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {capturedData.network && capturedData.network.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#d1d5db' }}>Network</span>
-                      <span style={S.badge(selectedNetworkIds.size < capturedData.network.length ? '#7c3aed' : '#374151')}>{selectedNetworkIds.size}/{capturedData.network.length}</span>
-                      <button onClick={() => setSelectedNetworkIds(new Set(capturedData.network!.map(n => n.id)))} style={{ marginLeft: 'auto', fontSize: '11px', cursor: 'pointer', background: 'none', border: 'none', color: '#60a5fa' }}>All</button>
-                      <button onClick={() => setSelectedNetworkIds(new Set())} style={{ fontSize: '11px', cursor: 'pointer', background: 'none', border: 'none', color: '#60a5fa' }}>None</button>
-                    </div>
-                    <input type="text" placeholder="🔍 Filter by URL or method…" value={networkFilter} onChange={e => setNetworkFilter(e.target.value)} style={S.filterInput()} />
-                    <div style={S.listBox()}>
-                      {capturedData.network
-                        .filter(r => r.url.toLowerCase().includes(networkFilter.toLowerCase()) || r.method.toLowerCase().includes(networkFilter.toLowerCase()))
-                        .map(req => (
-                          <label key={req.id} style={S.listRow(req.status >= 400)}>
-                            <input type="checkbox" checked={selectedNetworkIds.has(req.id)} onChange={() => toggleNetworkId(req.id)} style={{ marginTop: '2px', flexShrink: 0 }} />
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '5px', wordBreak: 'break-all', minWidth: 0 }}>
-                              <span style={{ fontFamily: 'monospace', fontSize: '10px', padding: '1px 5px', borderRadius: '3px', background: req.status >= 400 ? '#7f1d1d' : '#1e3a5f', color: req.status >= 400 ? '#fca5a5' : '#93c5fd', flexShrink: 0 }}>{req.method}</span>
-                              <span style={{ color: req.status >= 400 ? '#f87171' : '#9ca3af' }}>{req.status}</span>
-                              <span style={{ color: '#d1d5db', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(() => { try { return new URL(req.url).pathname; } catch { return req.url; } })()}</span>
-                            </span>
-                          </label>
-                        ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Collapsed state — show icon only */}
-        {sidebarCollapsed && (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '16px', gap: '16px' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            {capturedData && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#4ade80' }} title="Data captured" />}
-          </div>
-        )}
-      </div>
+      <DevtoolsSidebar
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleCollapsed={() => setSidebarCollapsed(c => !c)}
+        config={config}
+        onChangeConfig={setConfig}
+        onInjectLogger={injectLogger}
+        isCapturing={isCapturing}
+        onCapture={captureDevToolsData}
+        capturedData={capturedData}
+        onCopyContext={copyContext}
+        captureStatus={captureStatus}
+        includeDom={includeDom}
+        onToggleIncludeDom={setIncludeDom}
+        includePerf={includePerf}
+        onToggleIncludePerf={setIncludePerf}
+        selectedLogIds={selectedLogIds}
+        onToggleLogId={toggleLogId}
+        selectedNetworkIds={selectedNetworkIds}
+        onToggleNetworkId={toggleNetworkId}
+        onSelectAllNetwork={() => setSelectedNetworkIds(new Set(capturedData?.network?.map(n => n.id) || []))}
+        onDeselectAllNetwork={() => setSelectedNetworkIds(new Set())}
+        networkFilter={networkFilter}
+        onChangeNetworkFilter={setNetworkFilter}
+      />
 
       {/* ── Main Chat Area ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', background: 'var(--pbg)', color: 'var(--fg)', overflow: 'hidden' }}>
-
-        {/* History sidebar */}
-        {showHistory && (
-          <div className="askpage-history-sidebar" style={{ left: 0, right: 'auto', borderRight: '2px solid var(--bd)', borderLeft: 'none' }}>
-            <div className="askpage-history-header">
-              <h4>Chat History</h4>
-              <div style={{ display: 'flex', gap: 4 }}>
-                <button className="askpage-history-new" onClick={startNewChat}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
-                  New
-                </button>
-                <button className="askpage-history-close" onClick={() => setShowHistory(false)} title="Close">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                </button>
-              </div>
-            </div>
-            <input className="askpage-history-search" placeholder="Search DevTools chats…" value={historySearch} onChange={e => setHistorySearch(e.target.value)} />
-            <div className="askpage-history-list">
-              {conversations.filter(c => !historySearch || c.title.toLowerCase().includes(historySearch.toLowerCase())).map(conv => (
-                <div key={conv.id} className={`askpage-history-item ${activeConversationId === conv.id ? 'active' : ''}`}>
-                  <button className="askpage-history-item-main" onClick={() => loadConversation(conv)}>
-                    <div className="askpage-history-item-title">{conv.title.replace('[DevTools] ', '')}</div>
-                    <div className="askpage-history-item-meta">{new Date(conv.updatedAt).toLocaleDateString()} · {conv.messages.filter(m => m.role === 'user').length} msgs</div>
-                  </button>
-                  <button className="askpage-history-item-delete" onClick={e => { e.stopPropagation(); deleteConversation(conv.id); }} title="Delete">×</button>
-                </div>
-              ))}
-              {conversations.length === 0 && <div className="askpage-history-empty">No DevTools chats yet</div>}
-            </div>
-          </div>
-        )}
-
-        {/* Header */}
-        <div className="askpage-controls" style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1.5px solid var(--bd)' }}>
-          <button className={`askpage-header-btn askpage-history-btn ${showHistory ? 'active' : ''}`} onClick={() => { setShowHistory(!showHistory); if (!showHistory) loadConversations(); }} title="Chat History">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          </button>
-          <span style={{ fontSize: '24px', fontWeight: 700, fontFamily: 'var(--hfont)', color: 'var(--fg)', flex: 1 }}>
-            <b>BrowserBot Debugger</b>
-          </span>
-          {messages.length > 0 && (
-            <button className="askpage-header-btn" onClick={clearConversation} title="New conversation">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
-            </button>
-          )}
-          <select className="askpage-select" style={{ width: 'auto' }} value={providerType === 'openai' ? `openai:${selectedOpenAIId}` : providerType} onChange={e => { const v = e.target.value; if (v.startsWith('openai:')) { setProviderType('openai'); setSelectedOpenAIId(v.replace('openai:', '')); } else { setProviderType(v as AIProviderType); } }}>
-            {openaiProviders.map(p => <option key={p.id} value={`openai:${p.id}`}>{p.name} ({p.model})</option>)}
-            <option value="ollama">Ollama ({ollamaModel})</option>
-            <option value="chrome_ai">Chrome AI</option>
-          </select>
-        </div>
-
-        {/* Messages */}
-        <div className="askpage-messages" ref={messagesContainerRef} style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
-          {messages.length === 0 ? (
-            <div className="askpage-welcome">
-              <h3>Hi, I'm BrowserBot Debugger</h3>
-              <p>Capture DevTools context from the sidebar, select exactly what to share, and ask the AI to debug, optimize, or explain.</p>
-            </div>
-          ) : messages.map((msg, i) => {
-            const isLast = i === messages.length - 1;
-            const streaming = isStreaming && isLast && msg.role === 'assistant';
-            const liveThinking = streaming && thinkingContent;
-            return (
-              <div key={i} className={`askpage-msg-wrapper ${msg.role}`}>
-                {msg.role === 'assistant' && (msg.thinking || liveThinking) && (
-                  <details className="askpage-thinking-block" open={liveThinking ? thinkingExpanded : undefined}>
-                    <summary className="askpage-thinking-summary" onClick={liveThinking ? e => { e.preventDefault(); setThinkingExpanded(!thinkingExpanded); } : undefined}>
-                      {liveThinking ? 'Thinking…' : 'Thinking process'}
-                    </summary>
-                    <div className="askpage-thinking-content" dangerouslySetInnerHTML={{ __html: renderMarkdown((liveThinking ? thinkingContent : msg.thinking) as string) }} />
-                  </details>
-                )}
-                <div className={`askpage-msg ${msg.role}`} {...(msg.role === 'assistant' ? { dangerouslySetInnerHTML: { __html: renderMarkdown(msg.content) || '<span style="opacity:0.3">Thinking…</span>' } } : {})}>
-                  {msg.role !== 'assistant' ? msg.content : undefined}
-                </div>
-              </div>
-            );
-          })}
-          {isStreaming && !thinkingContent && messages[messages.length - 1]?.content === '' && (
-            <div className="askpage-typing">
-              <svg className="askpage-typing-wave" viewBox="0 0 64 16">
-                <path pathLength="1" d="M2 8q5-12 10 0t10 0 10 0 10 0 10 0 10 0" />
-              </svg>
-              <span>Thinking…</span>
-            </div>
-          )}
-        </div>
-
-        {/* Input */}
-        <div className="askpage-input-area" style={{ padding: '10px 16px 14px' }}>
-          <div className="askpage-input-wrapper" style={{ opacity: (!capturedData && messages.length === 0) ? 0.7 : 1 }}>
-            <textarea ref={inputRef} className="askpage-input" style={{ resize: 'none' }} value={input}
-              onChange={e => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'; }}
-              onKeyDown={handleKeyDown} placeholder="Ask about the captured DevTools data…" rows={1}
-              disabled={isStreaming}
-            />
-          </div>
-          {isStreaming
-            ? <button className="askpage-send-btn" onClick={abortStream} title="Stop"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg></button>
-            : <button className="askpage-send-btn" onClick={sendMessage} disabled={!input.trim()} title="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
-          }
-        </div>
-
-      </div>
+      <DevtoolsChatArea
+        showHistory={showHistory}
+        setShowHistory={setShowHistory}
+        startNewChat={startNewChat}
+        historySearch={historySearch}
+        setHistorySearch={setHistorySearch}
+        conversations={conversations}
+        activeConversationId={activeConversationId}
+        loadConversation={loadConversation}
+        deleteConversation={deleteConversation}
+        loadConversations={loadConversations}
+        messages={messages}
+        clearConversation={clearConversation}
+        providerType={providerType}
+        setProviderType={setProviderType}
+        selectedOpenAIId={selectedOpenAIId}
+        setSelectedOpenAIId={setSelectedOpenAIId}
+        openaiProviders={openaiProviders}
+        ollamaModel={ollamaModel}
+        messagesContainerRef={messagesContainerRef}
+        isStreaming={isStreaming}
+        thinkingContent={thinkingContent}
+        thinkingExpanded={thinkingExpanded}
+        setThinkingExpanded={setThinkingExpanded}
+        renderMarkdown={renderMarkdown}
+        inputRef={inputRef}
+        input={input}
+        setInput={setInput}
+        handleKeyDown={handleKeyDown}
+        capturedData={capturedData}
+        abortStream={abortStream}
+        sendMessage={sendMessage}
+      />
     </div>
   );
 }

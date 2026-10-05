@@ -141,7 +141,7 @@ This document tracks the incremental, behavior-preserving refactoring of the Bro
   - **Rollback Note**: Revert `AskPagePanel.tsx` and delete `entrypoints/ask-page.content/components/`.
   - **Parallel-safe**: No
 
-- [ ] **Task 10: Decompose `AskDevtoolsPanel.tsx` (Extract styles and inspectors)**
+- [x] **Task 10: Decompose `AskDevtoolsPanel.tsx` (Extract styles and inspectors)**
   - **Problem IDs**: PRB-12
   - **Goal**: Extract 400+ lines of inline style objects (`S.*`) to `devtoolsStyles.ts` and extract inspector tabs into sub-components.
   - **Files**: `entrypoints/devtools-panel/AskDevtoolsPanel.tsx`, `entrypoints/devtools-panel/devtoolsStyles.ts`, `entrypoints/devtools-panel/components/*`
@@ -171,3 +171,16 @@ This document tracks the incremental, behavior-preserving refactoring of the Bro
   - **Estimated Diff**: ~220 lines
   - **Rollback Note**: Revert `ARCHITECTURE.md`.
   - **Parallel-safe**: Yes
+
+---
+
+## Decisions / ADR Log
+
+- **ADR-01**: Chose to propagate `sessionId` across all abort messages and stream chunks instead of relying on singleton active streams because concurrent tab chats or devtools panels would collide.
+- **ADR-02**: Chose `browser.storage.local` with prefixed session keys as fallback in `SessionChatStorage` because Firefox MV2 lacks `browser.storage.session`.
+- **ADR-03**: Chose sequential Promise queue with retry backoff for storage mutations because `browser.storage` APIs are not atomic read-modify-write.
+- **ADR-04**: Chose window storage fallback for floating button content script because invalid extension context throws when extension is reloaded/updated.
+- **ADR-05**: Chose discriminated union with exhaustive `switch(message.type)` and async response wrapping in `background.ts` to prevent uncaught runtime port disconnections.
+- **ADR-06**: Chose consolidating AI client instantiations and model mappings in `utils/aiCommon.ts` without re-exporting in other `utils/*` modules because WXT automatically auto-imports symbols across utils.
+- **ADR-07**: Chose RFC4122 v4 UUID generator for ID generation across all entities with `generateId = generateUUID` alias for backward compatibility.
+- **ADR-08**: Chose decomposing `AskDevtoolsPanel.tsx` into `types.ts`, `devtoolsStyles.ts`, `DevtoolsSidebar.tsx`, and `DevtoolsChatArea.tsx` to isolate capture settings and chat UI while preserving identical styling and state contracts.
