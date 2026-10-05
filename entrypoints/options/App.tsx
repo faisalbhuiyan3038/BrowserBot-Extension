@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import iconUrl from '../../assets/public/icon.png';
+import iconUrl from '../../assets/icon.svg';
 import {
   AppStorage, StorageState, defaultState,
   AIProviderType, ExtractionAlgorithm, OpenAIProvider, SystemPrompt,
@@ -228,7 +228,7 @@ export default function App() {
           </svg>
         </button>
         <div className="mobile-header-logo">
-          <img src={iconUrl} alt="BrowserBot" width="32" height="32" style={{ display: 'block', borderRadius: '8px' }} />
+          <img src={iconUrl} alt="BrowserBot" width="32" height="32" style={{ display: 'block' }} />
           <span><b>BrowserBot</b></span>
         </div>
       </div>
@@ -237,7 +237,7 @@ export default function App() {
       {mobileMenuOpen && <div className="mobile-overlay" onClick={() => setMobileMenuOpen(false)} />}
       <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`}>
         <div className="sidebar-logo">
-          <img src={iconUrl} alt="BrowserBot" width="32" height="32" style={{ display: 'block', borderRadius: '8px' }} />
+          <img src={iconUrl} alt="BrowserBot" width="32" height="32" style={{ display: 'block' }} />
           <span><b>BrowserBot</b></span>
         </div>
         <nav>

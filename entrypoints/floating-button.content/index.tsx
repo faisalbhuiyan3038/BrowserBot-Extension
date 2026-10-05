@@ -9,6 +9,38 @@ export default defineContentScript({
     let uiMounted = false;
     let floatingButton: HTMLElement | null = null;
     let enabled = true;
+    let isPanelOpen = false;
+
+    function updatePanelOpenState(open: boolean) {
+      isPanelOpen = open;
+      if (!floatingButton) return;
+      if (open) {
+        floatingButton.classList.add('panel-open');
+      } else {
+        floatingButton.classList.remove('panel-open');
+        floatingButton.classList.remove('hidden');
+      }
+    }
+
+    // Listen for custom event from Ask Page panel
+    window.addEventListener('browserbot-ask-page-state', (e: any) => {
+      updatePanelOpenState(Boolean(e.detail?.open));
+    });
+
+    // Observer to detect Ask Page shadow root addition or removal
+    const observer = new MutationObserver(() => {
+      const exists = Boolean(document.querySelector('browserbot-ask-page'));
+      if (exists !== isPanelOpen) {
+        updatePanelOpenState(exists);
+      }
+    });
+    if (document.body) {
+      observer.observe(document.body, { childList: true });
+    } else {
+      document.addEventListener('DOMContentLoaded', () => {
+        if (document.body) observer.observe(document.body, { childList: true });
+      });
+    }
 
     // Check if floating button is enabled
     const checkEnabled = async () => {
@@ -57,6 +89,10 @@ export default defineContentScript({
           const wrapper = document.createElement('div');
           wrapper.id = 'browserbot-floating-btn';
           wrapper.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+          if (isPanelOpen || Boolean(document.querySelector('browserbot-ask-page'))) {
+            isPanelOpen = true;
+            wrapper.classList.add('panel-open');
+          }
           container.appendChild(wrapper);
 
           floatingButton = wrapper;
@@ -275,6 +311,7 @@ export default defineContentScript({
       }
 
       function showBtn() {
+        if (isPanelOpen) return;
         btn.classList.remove('hidden');
         if (autoHideEnabled) {
           scheduleHide();
@@ -284,6 +321,7 @@ export default defineContentScript({
       // Show on scroll
       let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
       window.addEventListener('scroll', () => {
+        if (isPanelOpen) return;
         showBtn();
         if (scrollTimeout) clearTimeout(scrollTimeout);
         scrollTimeout = setTimeout(() => {
@@ -293,6 +331,7 @@ export default defineContentScript({
 
       // Show on touch near button
       document.addEventListener('touchstart', (e) => {
+        if (isPanelOpen) return;
         const touch = e.touches[0];
         const rect = btn.getBoundingClientRect();
         const margin = 100;
@@ -314,6 +353,8 @@ export default defineContentScript({
     }
 
     async function toggleAskPage() {
+      // Optimistically hide floating button so animation starts immediately
+      updatePanelOpenState(true);
       try {
         await browser.runtime.sendMessage({ type: 'TOGGLE_ASK_PAGE' });
       } catch (e) {
@@ -323,6 +364,7 @@ export default defineContentScript({
           await browser.runtime.sendMessage({ type: 'TOGGLE_ASK_PAGE' });
         } catch (_) {
           console.warn('BrowserBot: Could not reach background script for TOGGLE_ASK_PAGE');
+          updatePanelOpenState(false);
         }
       }
     }

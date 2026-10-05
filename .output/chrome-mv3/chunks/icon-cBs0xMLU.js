@@ -1,1 +1,0 @@
-var e=`/assets/icon-Bzf9bIHf.png`;export{e as t};

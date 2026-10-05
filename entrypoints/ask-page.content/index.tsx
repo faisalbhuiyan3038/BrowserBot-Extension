@@ -178,6 +178,7 @@ export default defineContentScript({
                 uiMounted = false;
                 panelRoot = null;
                 showCallback = null;
+                window.dispatchEvent(new CustomEvent('browserbot-ask-page-state', { detail: { open: false } }));
               },
               onRegisterShow: (cb: () => void) => {
                 showCallback = cb;
@@ -188,10 +189,12 @@ export default defineContentScript({
         onRemove() {
           panelRoot?.unmount();
           panelRoot = null;
+          window.dispatchEvent(new CustomEvent('browserbot-ask-page-state', { detail: { open: false } }));
         }
       });
 
       ui.mount();
+      window.dispatchEvent(new CustomEvent('browserbot-ask-page-state', { detail: { open: true } }));
     }
   }
 });

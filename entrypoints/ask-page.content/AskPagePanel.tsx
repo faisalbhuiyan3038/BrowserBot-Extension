@@ -29,7 +29,7 @@ marked.setOptions({
 
 export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterShow, isFullScreen = false }: AskPagePanelProps) {
   // ─── State ──────────────────────────────────────────
-  const [minimized, setMinimized] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -213,14 +213,27 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     loadConversations();
   };
 
-  // ─── Register show callback for toggle ──────────────
+  const handleClose = () => {
+    if (closing) return;
+    setClosing(true);
+    window.dispatchEvent(new CustomEvent('browserbot-ask-page-state', { detail: { open: false } }));
+    setTimeout(() => {
+      onClose();
+    }, 220);
+  };
+
+  // ─── Register toggle callback & announce mount ──────
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('browserbot-ask-page-state', { detail: { open: true } }));
+  }, []);
+
   useEffect(() => {
     if (onRegisterShow) {
       onRegisterShow(() => {
-        setMinimized(false);
+        handleClose();
       });
     }
-  }, [onRegisterShow]);
+  }, [onRegisterShow, closing]);
 
   const sessionIdRef = useRef<string>('');
   useEffect(() => {
@@ -943,26 +956,11 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     return d.toLocaleDateString();
   };
 
-  // ─── Minimized state ───────────────────────────────
-  if (minimized) {
-    return (
-      <button
-        className="askpage-minimized-tab"
-        onClick={() => setMinimized(false)}
-        title="Open Ask Page"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-        </svg>
-      </button>
-    );
-  }
-
   // ─── Main panel ─────────────────────────────────────
   return (
     <div 
       ref={panelRef}
-      className={`askpage-panel ${isFullScreen ? 'fullscreen' : ''}`} 
+      className={`askpage-panel ${isFullScreen ? 'fullscreen' : ''} ${closing ? 'closing' : ''}`} 
       style={isFullScreen 
         ? { width: '100%', height: '100%', borderRadius: 0, border: 'none', right: 0, bottom: 0 } 
         : { 
@@ -1063,14 +1061,9 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
             </button>
           )}
           {!isFullScreen && (
-            <>
-              <button className="askpage-header-btn" onClick={() => setMinimized(true)} title="Minimize" aria-label="Minimize">
-                <svg viewBox="0 0 24 24"><path d="M5 12h14" /></svg>
-              </button>
-              <button className="askpage-header-btn" onClick={onClose} title="Close" aria-label="Close">
-                <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
-              </button>
-            </>
+            <button className="askpage-header-btn" onClick={handleClose} title="Close" aria-label="Close">
+              <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
           )}
         </div>
       </div>
@@ -1230,6 +1223,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
           <textarea
             ref={inputRef}
             className="askpage-input"
+            style={{ resize: 'none' }}
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}

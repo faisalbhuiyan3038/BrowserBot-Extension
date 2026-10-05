@@ -75,6 +75,8 @@ ${B()}
 
 button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; }
 input, textarea, select { font: inherit; color: inherit; }
+textarea { resize: none; }
+textarea::-webkit-resizer { display: none; }
 :focus-visible { outline: 2px dashed var(--ac); outline-offset: 3px; }
 textarea:focus-visible { outline: 0; }
 ::selection { background: var(--hlb); color: #2a2622; }
@@ -116,7 +118,15 @@ textarea:focus-visible { outline: 0; }
   width: 100%; max-width: none; height: 100%;
   border-radius: 0; border: none; box-shadow: none;
 }
+.askpage-panel.closing {
+  animation: fall .22s cubic-bezier(.4, 0, 1, 1) forwards !important;
+  pointer-events: none;
+}
 @keyframes rise { from { opacity: 0; transform: translateY(14px) rotate(.6deg); } }
+@keyframes fall {
+  from { opacity: 1; transform: translateY(0) rotate(0deg); }
+  to { opacity: 0; transform: translateY(16px) rotate(1deg) scale(0.96); }
+}
 .askpage-panel svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
 .askpage-resize-handle {
@@ -307,10 +317,11 @@ pre:hover .askpage-copy-btn, .askpage-copy-btn:focus-visible { opacity: 1; }
 }
 .askpage-cmp:focus-within { border-color: var(--ac); box-shadow: 0 0 0 3px var(--acs); }
 .askpage-input {
-  width: 100%; border: 0; background: none; resize: none; outline: 0;
+  width: 100%; border: 0; background: none; resize: none !important; outline: 0;
   font: 14px/1.55 var(--font); color: inherit;
   max-height: 90px; display: block;
 }
+.askpage-input::-webkit-resizer { display: none; }
 .askpage-input::placeholder { color: var(--mute); font: 600 20px var(--hfont); }
 .askpage-row { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
 .askpage-att {
@@ -485,17 +496,6 @@ pre:hover .askpage-copy-btn, .askpage-copy-btn:focus-visible { opacity: 1; }
 .askpage-tab-picker-btn.confirm { background: var(--ac); color: var(--acfg); }
 .askpage-tab-picker-btn.confirm:hover { filter: brightness(1.1); }
 
-/* Minimized tab */
-.askpage-minimized-tab {
-  position: fixed; top: 50%; right: 0; transform: translateY(-50%);
-  width: 42px; height: 48px; background: var(--ac);
-  border: 2px solid var(--bd); border-right: none; border-radius: 14px 0 0 14px;
-  color: var(--acfg); cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: -3px 3px 0 var(--bd); z-index: 2147483646; transition: .15s;
-}
-.askpage-minimized-tab:hover { width: 48px; }
-
 /* Floating button */
 #browserbot-floating-btn {
   position: fixed; right: 14px; bottom: 80px; width: 40px; height: 40px;
@@ -503,10 +503,34 @@ pre:hover .askpage-copy-btn, .askpage-copy-btn:focus-visible { opacity: 1; }
   background: var(--ac); border: 2px solid var(--bd); box-shadow: 3px 3px 0 var(--bd);
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; z-index: 2147483645;
-  transition: transform .2s, opacity .3s, filter .15s;
+  transition: transform .35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity .25s ease, filter .15s;
 }
-#browserbot-floating-btn:hover { transform: scale(1.08) rotate(-4deg); }
+#browserbot-floating-btn:hover:not(.panel-open) { transform: scale(1.08) rotate(-4deg); }
 #browserbot-floating-btn svg { width: 20px; height: 20px; color: var(--acfg); }
+
+/* Hidden smoothly when Ask Page panel is open */
+#browserbot-floating-btn.panel-open {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: scale(0.3) rotate(-15deg) !important;
+  visibility: hidden;
+  transition: transform .22s ease-in, opacity .18s ease-in, visibility 0s .22s;
+}
+
+#browserbot-floating-btn:not(.panel-open) {
+  opacity: 1;
+  visibility: visible;
+  transition: transform .38s cubic-bezier(0.34, 1.56, 0.64, 1), opacity .25s ease;
+}
+
+#browserbot-floating-btn.hidden:not(.panel-open) {
+  opacity: 0.35;
+  transform: scale(0.88);
+}
+#browserbot-floating-btn.hidden:hover:not(.panel-open) {
+  opacity: 1;
+  transform: scale(1.08) rotate(-4deg);
+}
 
 @media (max-width: 480px) {
   .askpage-panel { left: 8px; right: 8px; bottom: 8px; width: auto; max-width: none; }
@@ -514,5 +538,5 @@ pre:hover .askpage-copy-btn, .askpage-copy-btn:focus-visible { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
-`}var U=l({matches:[`<all_urls>`],cssInjectionMode:`ui`,runAt:`document_idle`,async main(e){let t=!1,n=null,r=!0;if(r=await(async()=>{let e=await u.storage.local.get(`appState`);return e.appState?e.appState.askPageFloatingButton!==!1:!0})(),u.storage.onChanged.addListener((e,t)=>{if(t===`local`&&e.appState?.newValue){let t=e.appState.newValue,n=r;r=t.askPageFloatingButton!==!1,r&&!n?i():!r&&n&&a()}}),!r)return;async function i(){t||(t=!0,(await R(e,{name:`browserbot-floating-button`,position:`overlay`,zIndex:2147483645,onMount(e){let t=document.createElement(`style`);t.textContent=H();let r=e.getRootNode();r.appendChild(t);let i=document.createElement(`div`);i.innerHTML=V(),r.appendChild(i);let a=document.createElement(`div`);a.id=`browserbot-floating-btn`,a.innerHTML=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,e.appendChild(a),n=a,o(a)},onRemove(){n=null}})).mount())}function a(){n&&(n.remove(),t=!1)}function o(e){let t=!1,n=!1,r=0,i=0,a=0,o=0,c=null,l=!1,u=localStorage.getItem(`browserbot-float-btn-pos`);if(u)try{let t=JSON.parse(u);e.style.right=`auto`,e.style.left=t.left+`px`,e.style.top=t.top+`px`,e.style.bottom=`auto`}catch{}e.addEventListener(`touchstart`,s=>{let c=s.touches[0];t=!0,n=!1,r=c.clientX,i=c.clientY;let l=e.getBoundingClientRect();a=l.left,o=l.top,e.classList.add(`dragging`),m(),g()},{passive:!0}),e.addEventListener(`touchmove`,s=>{if(!t)return;let c=s.touches[0],l=Math.abs(c.clientX-r),u=Math.abs(c.clientY-i);if((l>5||u>5)&&(n=!0),n){s.preventDefault();let t=a+(c.clientX-r),n=o+(c.clientY-i),l=Math.max(0,Math.min(window.innerWidth-48,t)),u=Math.max(0,Math.min(window.innerHeight-48,n));e.style.right=`auto`,e.style.left=l+`px`,e.style.top=u+`px`,e.style.bottom=`auto`}},{passive:!1}),e.addEventListener(`touchend`,r=>{if(t=!1,e.classList.remove(`dragging`),!n)s();else{let t=e.getBoundingClientRect();localStorage.setItem(`browserbot-float-btn-pos`,JSON.stringify({left:t.left,top:t.top})),d(e),f()}}),e.addEventListener(`mousedown`,s=>{s.preventDefault(),t=!0,n=!1,r=s.clientX,i=s.clientY;let c=e.getBoundingClientRect();a=c.left,o=c.top,e.classList.add(`dragging`),m(),g()}),document.addEventListener(`mousemove`,s=>{if(!t)return;let c=Math.abs(s.clientX-r),l=Math.abs(s.clientY-i);if((c>5||l>5)&&(n=!0),n){let t=a+(s.clientX-r),n=o+(s.clientY-i),c=Math.max(0,Math.min(window.innerWidth-48,t)),l=Math.max(0,Math.min(window.innerHeight-48,n));e.style.right=`auto`,e.style.left=c+`px`,e.style.top=l+`px`,e.style.bottom=`auto`}}),document.addEventListener(`mouseup`,r=>{if(t)if(t=!1,e.classList.remove(`dragging`),!n)s();else{let t=e.getBoundingClientRect();localStorage.setItem(`browserbot-float-btn-pos`,JSON.stringify({left:t.left,top:t.top})),d(e),f()}});function d(e){let t=e.getBoundingClientRect(),n=t.left+t.width/2,r=t.top+t.height/2;n<window.innerWidth/2?e.style.left=`8px`:e.style.left=window.innerWidth-56+`px`;let i=Math.max(8,Math.min(window.innerHeight-56,r-24));e.style.top=i+`px`,localStorage.setItem(`browserbot-float-btn-pos`,JSON.stringify({left:parseInt(e.style.left),top:i}))}function f(){l=!0,p()}function p(){l&&(m(),c=setTimeout(()=>{h()},3e3))}function m(){c&&=(clearTimeout(c),null)}function h(){e.classList.add(`hidden`)}function g(){e.classList.remove(`hidden`),l&&p()}let _=null;window.addEventListener(`scroll`,()=>{g(),_&&clearTimeout(_),_=setTimeout(()=>{l&&p()},1e3)},{passive:!0}),document.addEventListener(`touchstart`,t=>{let n=t.touches[0],r=e.getBoundingClientRect();n.clientX>=r.left-100&&n.clientX<=r.right+100&&n.clientY>=r.top-100&&n.clientY<=r.bottom+100&&g()},{passive:!0}),setTimeout(()=>{f()},5e3)}async function s(){try{await u.runtime.sendMessage({type:`TOGGLE_ASK_PAGE`})}catch{try{await new Promise(e=>setTimeout(e,200)),await u.runtime.sendMessage({type:`TOGGLE_ASK_PAGE`})}catch{console.warn(`BrowserBot: Could not reach background script for TOGGLE_ASK_PAGE`)}}}i()}}),W=class e extends Event{static EVENT_NAME=G(`wxt:locationchange`);constructor(t,n){super(e.EVENT_NAME,{}),this.newUrl=t,this.oldUrl=n}};function G(e){return`${u?.runtime?.id}:floating-button:${e}`}var K=typeof globalThis.navigation?.addEventListener==`function`;function q(e){let t,n=!1;return{run(){n||(n=!0,t=new URL(location.href),K?globalThis.navigation.addEventListener(`navigate`,e=>{let n=new URL(e.destination.url);n.href!==t.href&&(window.dispatchEvent(new W(n,t)),t=n)},{signal:e.signal}):e.setInterval(()=>{let e=new URL(location.href);e.href!==t.href&&(window.dispatchEvent(new W(e,t)),t=e)},1e3))}}}var J=class e{static SCRIPT_STARTED_MESSAGE_TYPE=G(`wxt:content-script-started`);id;abortController;locationWatcher=q(this);constructor(e,t){this.contentScriptName=e,this.options=t,this.id=Math.random().toString(36).slice(2),this.abortController=new AbortController,this.stopOldScripts(),this.listenForNewerScripts()}get signal(){return this.abortController.signal}abort(e){return this.abortController.abort(e)}get isInvalid(){return u.runtime?.id??this.notifyInvalidated(),this.signal.aborted}get isValid(){return!this.isInvalid}onInvalidated(e){return this.signal.addEventListener(`abort`,e),()=>this.signal.removeEventListener(`abort`,e)}block(){return new Promise(()=>{})}setInterval(e,t){let n=setInterval(()=>{this.isValid&&e()},t);return this.onInvalidated(()=>clearInterval(n)),n}setTimeout(e,t){let n=setTimeout(()=>{this.isValid&&e()},t);return this.onInvalidated(()=>clearTimeout(n)),n}requestAnimationFrame(e){let t=requestAnimationFrame((...t)=>{this.isValid&&e(...t)});return this.onInvalidated(()=>cancelAnimationFrame(t)),t}requestIdleCallback(e,t){let n=requestIdleCallback((...t)=>{this.signal.aborted||e(...t)},t);return this.onInvalidated(()=>cancelIdleCallback(n)),n}addEventListener(e,t,n,r){t===`wxt:locationchange`&&this.isValid&&this.locationWatcher.run(),e.addEventListener?.(t.startsWith(`wxt:`)?G(t):t,n,{...r,signal:this.signal})}notifyInvalidated(){this.abort(`Content script context invalidated`),d.debug(`Content script "${this.contentScriptName}" context invalidated`)}stopOldScripts(){document.dispatchEvent(new CustomEvent(e.SCRIPT_STARTED_MESSAGE_TYPE,{detail:{contentScriptName:this.contentScriptName,messageId:this.id}})),window.postMessage({type:e.SCRIPT_STARTED_MESSAGE_TYPE,contentScriptName:this.contentScriptName,messageId:this.id},`*`)}verifyScriptStartedEvent(e){let t=e.detail?.contentScriptName===this.contentScriptName,n=e.detail?.messageId===this.id;return t&&!n}listenForNewerScripts(){let t=e=>{!(e instanceof CustomEvent)||!this.verifyScriptStartedEvent(e)||this.notifyInvalidated()};document.addEventListener(e.SCRIPT_STARTED_MESSAGE_TYPE,t),this.onInvalidated(()=>document.removeEventListener(e.SCRIPT_STARTED_MESSAGE_TYPE,t))}},Y={debug:(...e)=>([...e],void 0),log:(...e)=>([...e],void 0),warn:(...e)=>([...e],void 0),error:(...e)=>([...e],void 0)};return(async()=>{try{let{main:e,...t}=U;return await e(new J(`floating-button`,t))}catch(e){throw Y.error(`The content script "floating-button" crashed on startup!`,e),e}})()})();
+`}var U=l({matches:[`<all_urls>`],cssInjectionMode:`ui`,runAt:`document_idle`,async main(e){let t=!1,n=null,r=!0,i=!1;function a(e){i=e,n&&(e?n.classList.add(`panel-open`):(n.classList.remove(`panel-open`),n.classList.remove(`hidden`)))}window.addEventListener(`browserbot-ask-page-state`,e=>{a(!!e.detail?.open)});let o=new MutationObserver(()=>{let e=!!document.querySelector(`browserbot-ask-page`);e!==i&&a(e)});if(document.body?o.observe(document.body,{childList:!0}):document.addEventListener(`DOMContentLoaded`,()=>{document.body&&o.observe(document.body,{childList:!0})}),r=await(async()=>{let e=await u.storage.local.get(`appState`);return e.appState?e.appState.askPageFloatingButton!==!1:!0})(),u.storage.onChanged.addListener((e,t)=>{if(t===`local`&&e.appState?.newValue){let t=e.appState.newValue,n=r;r=t.askPageFloatingButton!==!1,r&&!n?s():!r&&n&&c()}}),!r)return;async function s(){t||(t=!0,(await R(e,{name:`browserbot-floating-button`,position:`overlay`,zIndex:2147483645,onMount(e){let t=document.createElement(`style`);t.textContent=H();let r=e.getRootNode();r.appendChild(t);let a=document.createElement(`div`);a.innerHTML=V(),r.appendChild(a);let o=document.createElement(`div`);o.id=`browserbot-floating-btn`,o.innerHTML=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,(i||document.querySelector(`browserbot-ask-page`))&&(i=!0,o.classList.add(`panel-open`)),e.appendChild(o),n=o,l(o)},onRemove(){n=null}})).mount())}function c(){n&&(n.remove(),t=!1)}function l(e){let t=!1,n=!1,r=0,a=0,o=0,s=0,c=null,l=!1,u=localStorage.getItem(`browserbot-float-btn-pos`);if(u)try{let t=JSON.parse(u);e.style.right=`auto`,e.style.left=t.left+`px`,e.style.top=t.top+`px`,e.style.bottom=`auto`}catch{}e.addEventListener(`touchstart`,i=>{let c=i.touches[0];t=!0,n=!1,r=c.clientX,a=c.clientY;let l=e.getBoundingClientRect();o=l.left,s=l.top,e.classList.add(`dragging`),h(),_()},{passive:!0}),e.addEventListener(`touchmove`,i=>{if(!t)return;let c=i.touches[0],l=Math.abs(c.clientX-r),u=Math.abs(c.clientY-a);if((l>5||u>5)&&(n=!0),n){i.preventDefault();let t=o+(c.clientX-r),n=s+(c.clientY-a),l=Math.max(0,Math.min(window.innerWidth-48,t)),u=Math.max(0,Math.min(window.innerHeight-48,n));e.style.right=`auto`,e.style.left=l+`px`,e.style.top=u+`px`,e.style.bottom=`auto`}},{passive:!1}),e.addEventListener(`touchend`,r=>{if(t=!1,e.classList.remove(`dragging`),!n)d();else{let t=e.getBoundingClientRect();localStorage.setItem(`browserbot-float-btn-pos`,JSON.stringify({left:t.left,top:t.top})),f(e),p()}}),e.addEventListener(`mousedown`,i=>{i.preventDefault(),t=!0,n=!1,r=i.clientX,a=i.clientY;let c=e.getBoundingClientRect();o=c.left,s=c.top,e.classList.add(`dragging`),h(),_()}),document.addEventListener(`mousemove`,i=>{if(!t)return;let c=Math.abs(i.clientX-r),l=Math.abs(i.clientY-a);if((c>5||l>5)&&(n=!0),n){let t=o+(i.clientX-r),n=s+(i.clientY-a),c=Math.max(0,Math.min(window.innerWidth-48,t)),l=Math.max(0,Math.min(window.innerHeight-48,n));e.style.right=`auto`,e.style.left=c+`px`,e.style.top=l+`px`,e.style.bottom=`auto`}}),document.addEventListener(`mouseup`,r=>{if(t)if(t=!1,e.classList.remove(`dragging`),!n)d();else{let t=e.getBoundingClientRect();localStorage.setItem(`browserbot-float-btn-pos`,JSON.stringify({left:t.left,top:t.top})),f(e),p()}});function f(e){let t=e.getBoundingClientRect(),n=t.left+t.width/2,r=t.top+t.height/2;n<window.innerWidth/2?e.style.left=`8px`:e.style.left=window.innerWidth-56+`px`;let i=Math.max(8,Math.min(window.innerHeight-56,r-24));e.style.top=i+`px`,localStorage.setItem(`browserbot-float-btn-pos`,JSON.stringify({left:parseInt(e.style.left),top:i}))}function p(){l=!0,m()}function m(){l&&(h(),c=setTimeout(()=>{g()},3e3))}function h(){c&&=(clearTimeout(c),null)}function g(){e.classList.add(`hidden`)}function _(){i||(e.classList.remove(`hidden`),l&&m())}let v=null;window.addEventListener(`scroll`,()=>{i||(_(),v&&clearTimeout(v),v=setTimeout(()=>{l&&m()},1e3))},{passive:!0}),document.addEventListener(`touchstart`,t=>{if(i)return;let n=t.touches[0],r=e.getBoundingClientRect();n.clientX>=r.left-100&&n.clientX<=r.right+100&&n.clientY>=r.top-100&&n.clientY<=r.bottom+100&&_()},{passive:!0}),setTimeout(()=>{p()},5e3)}async function d(){a(!0);try{await u.runtime.sendMessage({type:`TOGGLE_ASK_PAGE`})}catch{try{await new Promise(e=>setTimeout(e,200)),await u.runtime.sendMessage({type:`TOGGLE_ASK_PAGE`})}catch{console.warn(`BrowserBot: Could not reach background script for TOGGLE_ASK_PAGE`),a(!1)}}}s()}}),W=class e extends Event{static EVENT_NAME=G(`wxt:locationchange`);constructor(t,n){super(e.EVENT_NAME,{}),this.newUrl=t,this.oldUrl=n}};function G(e){return`${u?.runtime?.id}:floating-button:${e}`}var K=typeof globalThis.navigation?.addEventListener==`function`;function q(e){let t,n=!1;return{run(){n||(n=!0,t=new URL(location.href),K?globalThis.navigation.addEventListener(`navigate`,e=>{let n=new URL(e.destination.url);n.href!==t.href&&(window.dispatchEvent(new W(n,t)),t=n)},{signal:e.signal}):e.setInterval(()=>{let e=new URL(location.href);e.href!==t.href&&(window.dispatchEvent(new W(e,t)),t=e)},1e3))}}}var J=class e{static SCRIPT_STARTED_MESSAGE_TYPE=G(`wxt:content-script-started`);id;abortController;locationWatcher=q(this);constructor(e,t){this.contentScriptName=e,this.options=t,this.id=Math.random().toString(36).slice(2),this.abortController=new AbortController,this.stopOldScripts(),this.listenForNewerScripts()}get signal(){return this.abortController.signal}abort(e){return this.abortController.abort(e)}get isInvalid(){return u.runtime?.id??this.notifyInvalidated(),this.signal.aborted}get isValid(){return!this.isInvalid}onInvalidated(e){return this.signal.addEventListener(`abort`,e),()=>this.signal.removeEventListener(`abort`,e)}block(){return new Promise(()=>{})}setInterval(e,t){let n=setInterval(()=>{this.isValid&&e()},t);return this.onInvalidated(()=>clearInterval(n)),n}setTimeout(e,t){let n=setTimeout(()=>{this.isValid&&e()},t);return this.onInvalidated(()=>clearTimeout(n)),n}requestAnimationFrame(e){let t=requestAnimationFrame((...t)=>{this.isValid&&e(...t)});return this.onInvalidated(()=>cancelAnimationFrame(t)),t}requestIdleCallback(e,t){let n=requestIdleCallback((...t)=>{this.signal.aborted||e(...t)},t);return this.onInvalidated(()=>cancelIdleCallback(n)),n}addEventListener(e,t,n,r){t===`wxt:locationchange`&&this.isValid&&this.locationWatcher.run(),e.addEventListener?.(t.startsWith(`wxt:`)?G(t):t,n,{...r,signal:this.signal})}notifyInvalidated(){this.abort(`Content script context invalidated`),d.debug(`Content script "${this.contentScriptName}" context invalidated`)}stopOldScripts(){document.dispatchEvent(new CustomEvent(e.SCRIPT_STARTED_MESSAGE_TYPE,{detail:{contentScriptName:this.contentScriptName,messageId:this.id}})),window.postMessage({type:e.SCRIPT_STARTED_MESSAGE_TYPE,contentScriptName:this.contentScriptName,messageId:this.id},`*`)}verifyScriptStartedEvent(e){let t=e.detail?.contentScriptName===this.contentScriptName,n=e.detail?.messageId===this.id;return t&&!n}listenForNewerScripts(){let t=e=>{!(e instanceof CustomEvent)||!this.verifyScriptStartedEvent(e)||this.notifyInvalidated()};document.addEventListener(e.SCRIPT_STARTED_MESSAGE_TYPE,t),this.onInvalidated(()=>document.removeEventListener(e.SCRIPT_STARTED_MESSAGE_TYPE,t))}},Y={debug:(...e)=>([...e],void 0),log:(...e)=>([...e],void 0),warn:(...e)=>([...e],void 0),error:(...e)=>([...e],void 0)};return(async()=>{try{let{main:e,...t}=U;return await e(new J(`floating-button`,t))}catch(e){throw Y.error(`The content script "floating-button" crashed on startup!`,e),e}})()})();
 floatingButton;

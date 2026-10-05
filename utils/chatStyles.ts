@@ -199,6 +199,8 @@ ${fonts}
 
 button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; }
 input, textarea, select { font: inherit; color: inherit; }
+textarea { resize: none; }
+textarea::-webkit-resizer { display: none; }
 :focus-visible { outline: 2px dashed var(--ac); outline-offset: 3px; }
 textarea:focus-visible { outline: 0; }
 ::selection { background: var(--hlb); color: #2a2622; }
@@ -240,7 +242,15 @@ textarea:focus-visible { outline: 0; }
   width: 100%; max-width: none; height: 100%;
   border-radius: 0; border: none; box-shadow: none;
 }
+.askpage-panel.closing {
+  animation: fall .22s cubic-bezier(.4, 0, 1, 1) forwards !important;
+  pointer-events: none;
+}
 @keyframes rise { from { opacity: 0; transform: translateY(14px) rotate(.6deg); } }
+@keyframes fall {
+  from { opacity: 1; transform: translateY(0) rotate(0deg); }
+  to { opacity: 0; transform: translateY(16px) rotate(1deg) scale(0.96); }
+}
 .askpage-panel svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
 .askpage-resize-handle {
@@ -431,10 +441,11 @@ pre:hover .askpage-copy-btn, .askpage-copy-btn:focus-visible { opacity: 1; }
 }
 .askpage-cmp:focus-within { border-color: var(--ac); box-shadow: 0 0 0 3px var(--acs); }
 .askpage-input {
-  width: 100%; border: 0; background: none; resize: none; outline: 0;
+  width: 100%; border: 0; background: none; resize: none !important; outline: 0;
   font: 14px/1.55 var(--font); color: inherit;
   max-height: 90px; display: block;
 }
+.askpage-input::-webkit-resizer { display: none; }
 .askpage-input::placeholder { color: var(--mute); font: 600 20px var(--hfont); }
 .askpage-row { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
 .askpage-att {
@@ -609,17 +620,6 @@ pre:hover .askpage-copy-btn, .askpage-copy-btn:focus-visible { opacity: 1; }
 .askpage-tab-picker-btn.confirm { background: var(--ac); color: var(--acfg); }
 .askpage-tab-picker-btn.confirm:hover { filter: brightness(1.1); }
 
-/* Minimized tab */
-.askpage-minimized-tab {
-  position: fixed; top: 50%; right: 0; transform: translateY(-50%);
-  width: 42px; height: 48px; background: var(--ac);
-  border: 2px solid var(--bd); border-right: none; border-radius: 14px 0 0 14px;
-  color: var(--acfg); cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: -3px 3px 0 var(--bd); z-index: 2147483646; transition: .15s;
-}
-.askpage-minimized-tab:hover { width: 48px; }
-
 /* Floating button */
 #browserbot-floating-btn {
   position: fixed; right: 14px; bottom: 80px; width: 40px; height: 40px;
@@ -627,10 +627,34 @@ pre:hover .askpage-copy-btn, .askpage-copy-btn:focus-visible { opacity: 1; }
   background: var(--ac); border: 2px solid var(--bd); box-shadow: 3px 3px 0 var(--bd);
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; z-index: 2147483645;
-  transition: transform .2s, opacity .3s, filter .15s;
+  transition: transform .35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity .25s ease, filter .15s;
 }
-#browserbot-floating-btn:hover { transform: scale(1.08) rotate(-4deg); }
+#browserbot-floating-btn:hover:not(.panel-open) { transform: scale(1.08) rotate(-4deg); }
 #browserbot-floating-btn svg { width: 20px; height: 20px; color: var(--acfg); }
+
+/* Hidden smoothly when Ask Page panel is open */
+#browserbot-floating-btn.panel-open {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: scale(0.3) rotate(-15deg) !important;
+  visibility: hidden;
+  transition: transform .22s ease-in, opacity .18s ease-in, visibility 0s .22s;
+}
+
+#browserbot-floating-btn:not(.panel-open) {
+  opacity: 1;
+  visibility: visible;
+  transition: transform .38s cubic-bezier(0.34, 1.56, 0.64, 1), opacity .25s ease;
+}
+
+#browserbot-floating-btn.hidden:not(.panel-open) {
+  opacity: 0.35;
+  transform: scale(0.88);
+}
+#browserbot-floating-btn.hidden:hover:not(.panel-open) {
+  opacity: 1;
+  transform: scale(1.08) rotate(-4deg);
+}
 
 @media (max-width: 480px) {
   .askpage-panel { left: 8px; right: 8px; bottom: 8px; width: auto; max-width: none; }

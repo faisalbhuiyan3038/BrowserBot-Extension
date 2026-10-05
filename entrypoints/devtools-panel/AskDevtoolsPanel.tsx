@@ -1114,7 +1114,7 @@ export default function AskDevtoolsPanel() {
         {/* Input */}
         <div className="askpage-input-area" style={{ padding: '10px 16px 14px' }}>
           <div className="askpage-input-wrapper" style={{ opacity: (!capturedData && messages.length === 0) ? 0.7 : 1 }}>
-            <textarea ref={inputRef} className="askpage-input" value={input}
+            <textarea ref={inputRef} className="askpage-input" style={{ resize: 'none' }} value={input}
               onChange={e => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'; }}
               onKeyDown={handleKeyDown} placeholder="Ask about the captured DevTools data…" rows={1}
               disabled={isStreaming}

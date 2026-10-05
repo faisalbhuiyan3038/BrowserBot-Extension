@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import iconUrl from '../../assets/public/icon.png';
+import iconUrl from '../../assets/icon.svg';
 import { groupTabsWithAI, TabInfo, ExistingGroup, organizeBookmarksWithAI } from '../../utils/ai';
 import { AppStorage, SystemPrompt } from '../../utils/storage';
 import {
@@ -14,7 +14,6 @@ export default function App() {
   const [view, setView] = useState<View>('home');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
-  const [tabCount, setTabCount] = useState(0);
   const [keepExisting, setKeepExisting] = useState(false);
   const [customInstructions, setCustomInstructions] = useState('');
 
@@ -42,9 +41,6 @@ export default function App() {
   useEffect(() => { if (bChatRef.current) bChatRef.current.scrollTop = bChatRef.current.scrollHeight; }, [bMessages]);
 
   useEffect(() => {
-    browser.tabs.query({ currentWindow: true }).then(tabs => {
-      setTabCount(tabs.length);
-    });
     // Load available prompts
     AppStorage.get().then(state => {
       setPrompts(state.tabGroupPrompts);
@@ -227,11 +223,10 @@ export default function App() {
       <header className="popup-header">
         <div className="logo-area">
           <div className="logo-circle">
-            <img src={iconUrl} alt="BrowserBot" width="28" height="28" style={{ display: 'block', borderRadius: '6px' }} />
+            <img src={iconUrl} alt="BrowserBot" width="28" height="28" style={{ display: 'block' }} />
           </div>
           <div className="logo-text">
             <h2><b>BrowserBot</b></h2>
-            <span className="tab-badge">{tabCount} tabs</span>
           </div>
         </div>
         <button className="icon-btn" onClick={openSettings} title="Settings">

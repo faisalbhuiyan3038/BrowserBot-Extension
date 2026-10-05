@@ -2,7 +2,11 @@ import { defineConfig } from 'wxt';
 
 // See https://wxt.dev/api/config.html
 export default defineConfig({
-  modules: ['@wxt-dev/module-react','@wxt-dev/auto-icons'],
+  modules: ['@wxt-dev/module-react', '@wxt-dev/auto-icons'],
+  autoIcons: {
+    baseIconPath: 'assets/icon.png',
+    sizes: [16, 32, 48, 96, 128],
+  },
   manifest: ({ browser }) => ({
     name: 'BrowserBot - AI-Powered Browser Automation',
     description: 'Automate Tab Groups, Organize Bookmarks, Ask Tabs all with 3 AI Providers (OpenAI API, Ollama and built-in Chrome AI)',
