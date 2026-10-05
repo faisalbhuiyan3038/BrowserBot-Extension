@@ -163,7 +163,7 @@ This document tracks the incremental, behavior-preserving refactoring of the Bro
 
 ### Phase 2.5: Documentation & Architecture Map (Definition of Done)
 
-- [ ] **Task 12: Create `ARCHITECTURE.md` and complete refactoring sign-off**
+- [x] **Task 12: Create `ARCHITECTURE.md` and complete refactoring sign-off**
   - **Problem IDs**: Definition of Done
   - **Goal**: Produce clear architectural documentation detailing module boundaries, message contracts, storage lifecycles, and cross-browser guarantees.
   - **Files**: `ARCHITECTURE.md`, `REFACTORING.md`
