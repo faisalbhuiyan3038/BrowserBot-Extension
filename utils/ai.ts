@@ -1,6 +1,14 @@
 import { AppStorage, StorageState, OpenAIProvider, SystemPrompt } from './storage';
-import { getLanguageModel } from './askPageAI';
 import type { OrganizePlan } from './bookmarks';
+import {
+  getLanguageModel,
+  getChromeAIAvailability,
+  normalizeOpenAIEndpoint,
+  buildOpenAIHeaders,
+  buildOpenAIPayload,
+  normalizeOllamaEndpoint,
+  parseJSONFromText,
+} from './aiCommon';
 
 export type TabInfo = {
   id: number;
@@ -119,27 +127,11 @@ export async function groupTabsWithAI(
     jsonResponse = await generateWithOpenAI(fullPrompt, provider);
   }
 
-  const parsed = parseJSON(jsonResponse);
+  const parsed = parseJSONFromText(jsonResponse);
   if (!parsed || !parsed.categories) {
     throw new Error(`AI returned invalid format. Raw response:\n${jsonResponse.substring(0, 300)}`);
   }
   return parsed.categories;
-}
-
-function parseJSON(text: string): any {
-  try { return JSON.parse(text); } catch (_) {}
-
-  const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (match?.[1]) {
-    try { return JSON.parse(match[1]); } catch (_) {}
-  }
-
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start !== -1 && end > start) {
-    try { return JSON.parse(text.substring(start, end + 1)); } catch (_) {}
-  }
-  return null;
 }
 
 // ─── Chrome AI (Prompt API) ──────────────────────────────────
@@ -150,15 +142,7 @@ async function generateWithChromeAI(prompt: string): Promise<string> {
     throw new Error('Chrome AI Prompt API is not available. Make sure you are using Chrome 131+ and enable the following flags in chrome://flags:\n• #optimization-guide-on-device-model → Enabled\n• #prompt-api-for-gemini-nano-multimodal-input → Enabled');
   }
 
-  let availability: string;
-  if (typeof lm.availability === 'function') {
-    availability = await lm.availability();
-  } else if (typeof lm.capabilities === 'function') {
-    const caps = await lm.capabilities();
-    availability = caps.available;
-  } else {
-    throw new Error('No availability method found on LanguageModel.');
-  }
+  const availability = await getChromeAIAvailability(lm);
 
   // Accept both old ('readily') and new ('available') return values
   if (availability === 'no' || availability === 'unavailable') {
@@ -181,8 +165,8 @@ async function generateWithChromeAI(prompt: string): Promise<string> {
 // ─── Ollama ──────────────────────────────────────────────────
 
 async function generateWithOllama(prompt: string, state: StorageState): Promise<string> {
-  const endpoint = state.ollamaEndpoint.replace(/\/+$/, '');
-  const res = await fetch(`${endpoint}/api/generate`, {
+  const url = normalizeOllamaEndpoint(state.ollamaEndpoint, '/api/generate');
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -204,26 +188,11 @@ async function generateWithOllama(prompt: string, state: StorageState): Promise<
 // ─── OpenAI Compatible ──────────────────────────────────────
 
 async function generateWithOpenAI(prompt: string, provider: OpenAIProvider): Promise<string> {
-  let url = provider.endpoint.replace(/\/+$/, '');
-  if (!url.endsWith('/chat/completions')) {
-    url += '/chat/completions';
-  }
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
-  };
-  if (provider.apiKey) {
-    headers['Authorization'] = `Bearer ${provider.apiKey}`;
-  }
-
-  const body: Record<string, any> = {
-    model: provider.model,
-    messages: [{ role: 'user', content: prompt }]
-  };
-
-  if (provider.reasoning) {
-    body.reasoning = { enabled: true };
-  }
+  const url = normalizeOpenAIEndpoint(provider.endpoint);
+  const headers = buildOpenAIHeaders(provider.apiKey);
+  const body = buildOpenAIPayload(provider.model, [{ role: 'user', content: prompt }], {
+    reasoning: provider.reasoning,
+  });
 
   const res = await fetch(url, {
     method: 'POST',
@@ -315,7 +284,7 @@ export async function organizeBookmarksWithAI(
     jsonResponse = await generateWithOpenAI(prompt, provider);
   }
 
-  const parsed = parseJSON(jsonResponse);
+  const parsed = parseJSONFromText(jsonResponse);
   if (!parsed || (!parsed.moves && !parsed.createFolders)) {
     throw new Error(`AI returned invalid format.\n\nRaw response:\n${jsonResponse.substring(0, 400)}`);
   }

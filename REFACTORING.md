@@ -110,7 +110,7 @@ This document tracks the incremental, behavior-preserving refactoring of the Bro
   - **Rollback Note**: Revert changes to `ask-page.content/index.tsx`, `wxt.config.ts`, `background.ts`.
   - **Parallel-safe**: Yes
 
-- [ ] **Task 7: Consolidate duplicated AI client plumbing**
+- [x] **Task 7: Consolidate duplicated AI client plumbing**
   - **Problem IDs**: PRB-10
   - **Goal**: Extract common provider URL normalization, header construction, Ollama request bodies, and Chrome AI availability checks into `utils/aiCommon.ts`.
   - **Files**: `utils/aiCommon.ts` (new), `utils/ai.ts`, `utils/askPageAI.ts`
