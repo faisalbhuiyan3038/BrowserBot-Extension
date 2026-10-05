@@ -75,7 +75,7 @@ This document tracks the incremental, behavior-preserving refactoring of the Bro
   - **Rollback Note**: Revert queue wrapper in `utils/storage.ts`.
   - **Parallel-safe**: No
 
-- [ ] **Task 4: Floating button safe storage and listener lifecycle cleanup**
+- [x] **Task 4: Floating button safe storage and listener lifecycle cleanup**
   - **Problem IDs**: PRB-06, PRB-08
   - **Goal**: Replace host `localStorage` with extension storage (with memory fallback) and cleanly remove all window/document listeners on unmount/invalidation.
   - **Files**: `entrypoints/floating-button.content/index.tsx`
