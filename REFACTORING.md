@@ -66,7 +66,7 @@ This document tracks the incremental, behavior-preserving refactoring of the Bro
   - **Rollback Note**: Revert changes to `background.ts` and `storage.ts`.
   - **Parallel-safe**: No
 
-- [ ] **Task 3: Concurrency-safe storage mutation queue**
+- [x] **Task 3: Concurrency-safe storage mutation queue**
   - **Problem IDs**: PRB-05
   - **Goal**: Eliminate read-modify-write race conditions in `AppStorage.set` and `ConversationStorage.save`.
   - **Files**: `utils/storage.ts`

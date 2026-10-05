@@ -275,9 +275,11 @@ export const AppStorage = {
     }
     return merged;
   },
-  set: async (state: Partial<StorageState>) => {
-    const current = await AppStorage.get();
-    await browser.storage.local.set({ appState: { ...current, ...state } });
+  set: (state: Partial<StorageState>): Promise<void> => {
+    return enqueueAppStorage(async () => {
+      const current = await AppStorage.get();
+      await browser.storage.local.set({ appState: { ...current, ...state } });
+    });
   },
   getActiveOpenAIProvider: async (): Promise<OpenAIProvider | undefined> => {
     const state = await AppStorage.get();
@@ -295,16 +297,33 @@ export const AppStorage = {
     const conversations = await ConversationStorage.loadAll();
     return JSON.stringify({ settings: state, conversations }, null, 2);
   },
-  importAll: async (json: string): Promise<void> => {
-    const data = JSON.parse(json);
-    if (data.settings) {
-      await browser.storage.local.set({ appState: { ...defaultState, ...data.settings } });
-    }
-    if (data.conversations && Array.isArray(data.conversations)) {
-      await browser.storage.local.set({ askPageConversations: data.conversations });
-    }
+  importAll: (json: string): Promise<void> => {
+    return enqueueAppStorage(async () => {
+      const data = JSON.parse(json);
+      if (data.settings) {
+        await browser.storage.local.set({ appState: { ...defaultState, ...data.settings } });
+      }
+      if (data.conversations && Array.isArray(data.conversations)) {
+        await browser.storage.local.set({ askPageConversations: data.conversations });
+      }
+    });
   }
 };
+
+// ─── Sequential async queues for atomic storage mutations ───────
+let appStorageQueue = Promise.resolve();
+function enqueueAppStorage<T>(task: () => Promise<T>): Promise<T> {
+  const next = appStorageQueue.then(task, task);
+  appStorageQueue = next.then(() => {}, () => {});
+  return next;
+}
+
+let conversationStorageQueue = Promise.resolve();
+function enqueueConversationStorage<T>(task: () => Promise<T>): Promise<T> {
+  const next = conversationStorageQueue.then(task, task);
+  conversationStorageQueue = next.then(() => {}, () => {});
+  return next;
+}
 
 // ─── Conversation Storage (separate key) ────────────────────
 export const ConversationStorage = {
@@ -313,39 +332,45 @@ export const ConversationStorage = {
     return (val.askPageConversations as Conversation[]) || [];
   },
 
-  save: async (conversation: Conversation): Promise<void> => {
-    const all = await ConversationStorage.loadAll();
-    const idx = all.findIndex(c => c.id === conversation.id);
-    if (idx >= 0) {
-      all[idx] = conversation;
-    } else {
-      all.unshift(conversation);
-    }
+  save: (conversation: Conversation): Promise<void> => {
+    return enqueueConversationStorage(async () => {
+      const all = await ConversationStorage.loadAll();
+      const idx = all.findIndex(c => c.id === conversation.id);
+      if (idx >= 0) {
+        all[idx] = conversation;
+      } else {
+        all.unshift(conversation);
+      }
 
-    // Enforce max limit
-    const state = await AppStorage.get();
-    const maxConvs = state.askPageMaxConversations || 100;
-    const trimmed = all.slice(0, maxConvs);
+      // Enforce max limit
+      const state = await AppStorage.get();
+      const maxConvs = state.askPageMaxConversations || 100;
+      const trimmed = all.slice(0, maxConvs);
 
-    await browser.storage.local.set({ askPageConversations: trimmed });
+      await browser.storage.local.set({ askPageConversations: trimmed });
+    });
   },
 
-  delete: async (id: string): Promise<void> => {
-    const all = await ConversationStorage.loadAll();
-    const filtered = all.filter(c => c.id !== id);
-    await browser.storage.local.set({ askPageConversations: filtered });
+  delete: (id: string): Promise<void> => {
+    return enqueueConversationStorage(async () => {
+      const all = await ConversationStorage.loadAll();
+      const filtered = all.filter(c => c.id !== id);
+      await browser.storage.local.set({ askPageConversations: filtered });
+    });
   },
 
-  clearOld: async (days: number): Promise<number> => {
-    if (days <= 0) return 0;
-    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-    const all = await ConversationStorage.loadAll();
-    const kept = all.filter(c => c.updatedAt >= cutoff);
-    const removed = all.length - kept.length;
-    if (removed > 0) {
-      await browser.storage.local.set({ askPageConversations: kept });
-    }
-    return removed;
+  clearOld: (days: number): Promise<number> => {
+    return enqueueConversationStorage(async () => {
+      if (days <= 0) return 0;
+      const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+      const all = await ConversationStorage.loadAll();
+      const kept = all.filter(c => c.updatedAt >= cutoff);
+      const removed = all.length - kept.length;
+      if (removed > 0) {
+        await browser.storage.local.set({ askPageConversations: kept });
+      }
+      return removed;
+    });
   }
 };
 
