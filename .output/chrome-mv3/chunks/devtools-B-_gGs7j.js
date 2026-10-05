@@ -1,1 +1,0 @@
-import{t as e}from"./browser-CguJnX0f.js";try{e.devtools.panels.create(`AI Debugger`,``,`devtools-panel.html`,()=>{console.log(`AI Debugger panel created`)})}catch(e){console.error(`Failed to create DevTools panel`,e)}

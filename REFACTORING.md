@@ -150,7 +150,7 @@ This document tracks the incremental, behavior-preserving refactoring of the Bro
   - **Rollback Note**: Revert `AskDevtoolsPanel.tsx` and delete extracted files.
   - **Parallel-safe**: No
 
-- [ ] **Task 11: Remove unused template CSS and untrack build artifacts**
+- [x] **Task 11: Remove unused template CSS and untrack build artifacts**
   - **Problem IDs**: PRB-15, PRB-16
   - **Goal**: Delete unused `popup/App.css` and root `build_*.txt`; add `.output` to `.gitignore` and untrack `.output/` from git index.
   - **Files**: `entrypoints/popup/App.css` (delete), `build_*.txt` (delete), `.gitignore`
@@ -184,3 +184,4 @@ This document tracks the incremental, behavior-preserving refactoring of the Bro
 - **ADR-06**: Chose consolidating AI client instantiations and model mappings in `utils/aiCommon.ts` without re-exporting in other `utils/*` modules because WXT automatically auto-imports symbols across utils.
 - **ADR-07**: Chose RFC4122 v4 UUID generator for ID generation across all entities with `generateId = generateUUID` alias for backward compatibility.
 - **ADR-08**: Chose decomposing `AskDevtoolsPanel.tsx` into `types.ts`, `devtoolsStyles.ts`, `DevtoolsSidebar.tsx`, and `DevtoolsChatArea.tsx` to isolate capture settings and chat UI while preserving identical styling and state contracts.
+- **ADR-09**: Chose untracking `.output/` and adding it to `.gitignore` along with deleting obsolete `build_*.txt` and unused `entrypoints/popup/App.css` to keep git working tree clean after builds.
