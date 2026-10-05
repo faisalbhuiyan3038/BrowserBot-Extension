@@ -2,6 +2,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
 import { AppStorage, SystemPrompt, OpenAIProvider, AIProviderType, ExtractionAlgorithm, Conversation, ChatMsg, generateUUID } from '../../utils/storage';
 import { extractPageContent } from '../../utils/extractor';
+import { AttachedTab, SlashMode, SlashOption, getDomain } from './types';
+import { ChatHeader } from './components/ChatHeader';
+import { HistorySidebar } from './components/HistorySidebar';
+import { TabPickerModal } from './components/TabPickerModal';
+import { SlashMenu } from './components/SlashMenu';
+import { MessageList } from './components/MessageList';
 
 // Hardcoded instruction always appended to Ask Page system prompts
 const MARKDOWN_FORMAT_INSTRUCTION = '\n\nIMPORTANT: Always format your responses using markdown. Use headings, bullet points, code blocks, bold, italic, and other markdown features to make your responses well-structured and readable.';
@@ -12,13 +18,6 @@ interface AskPagePanelProps {
   onClose: () => void;
   onRegisterShow?: (cb: () => void) => void;
   isFullScreen?: boolean;
-}
-
-interface AttachedTab {
-  id: number;
-  title: string;
-  url: string;
-  content: string;
 }
 
 // Configure marked for safe rendering
@@ -66,7 +65,6 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   const [selectedPickerTabs, setSelectedPickerTabs] = useState<number[]>([]);
 
   // ─── Slash-command menu (/model, /prompt, /page, /tab) ───
-  type SlashMode = 'root' | 'model' | 'prompt' | 'tab';
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashMode, setSlashMode] = useState<SlashMode>('root');
   const [slashQuery, setSlashQuery] = useState('');
@@ -640,10 +638,6 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   });
 
   // ─── Slash menu helpers ───────────────────────────
-  const getDomain = (url: string) => {
-    try { return new URL(url).hostname; } catch { return url; }
-  };
-
   const getCurrentModelLabel = () => {
     if (providerType === 'openai') {
       const p = openaiProviders.find(pr => pr.id === selectedOpenAIId);
@@ -661,14 +655,6 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     if (providerType === 'ollama') return ollamaModel || 'ollama';
     return 'chrome-ai';
   };
-
-  interface SlashOption {
-    key: string;
-    title: string;
-    desc: string;
-    hint?: string;
-    active?: boolean;
-  }
 
   const getSlashOptions = (): SlashOption[] => {
     const q = slashQuery.toLowerCase();
@@ -1008,228 +994,60 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
 
       {/* History sidebar */}
       {showHistory && (
-        <div className="askpage-history-sidebar">
-          <div className="askpage-history-header">
-            <h4>Chat History</h4>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <button className="askpage-history-new" onClick={startNewChat}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 5v14M5 12h14"/>
-                </svg>
-                New
-              </button>
-              <button className="askpage-history-close" onClick={() => setShowHistory(false)} title="Close">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-          <input
-            className="askpage-history-search"
-            placeholder="Search conversations…"
-            value={historySearch}
-            onChange={e => setHistorySearch(e.target.value)}
-          />
-          <div className="askpage-history-list">
-            {filteredConversations.map(conv => (
-              <div
-                key={conv.id}
-                className={`askpage-history-item ${activeConversationId === conv.id ? 'active' : ''}`}
-              >
-                <button className="askpage-history-item-main" onClick={() => loadConversation(conv)}>
-                  <div className="askpage-history-item-title">{conv.title}</div>
-                  <div className="askpage-history-item-meta">
-                    {formatDate(conv.updatedAt)} · {conv.messages.filter(m => m.role === 'user').length} msgs
-                  </div>
-                </button>
-                <button
-                  className="askpage-history-item-delete"
-                  onClick={(e) => { e.stopPropagation(); deleteConversation(conv.id); }}
-                  title="Delete"
-                >×</button>
-              </div>
-            ))}
-            {filteredConversations.length === 0 && (
-              <div className="askpage-history-empty">
-                {historySearch ? 'No matching conversations' : 'No conversations yet'}
-              </div>
-            )}
-          </div>
-        </div>
+        <HistorySidebar
+          conversations={filteredConversations}
+          activeConversationId={activeConversationId}
+          historySearch={historySearch}
+          onSearchChange={setHistorySearch}
+          onStartNewChat={startNewChat}
+          onClose={() => setShowHistory(false)}
+          onLoadConversation={loadConversation}
+          onDeleteConversation={deleteConversation}
+          formatDate={formatDate}
+        />
       )}
 
-      {/* Header — matches prototype: brand + minimal actions */}
-      <div className="askpage-header">
-        <div className="askpage-brand">
-          <svg className="askpage-logo" viewBox="0 0 24 24" fill="none" stroke="none">
-            <rect width="24" height="24" rx="7" fill="currentColor" stroke="none" />
-            <path d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z" fill="#fff" stroke="none" />
-            <circle cx="10" cy="11" r="1.1" fill="currentColor" stroke="none" />
-            <circle cx="14" cy="11" r="1.1" fill="currentColor" stroke="none" />
-          </svg>
-          <span className="askpage-header-title"><b>BrowserBot</b></span>
-        </div>
-        <div className="askpage-acts">
-          <button
-            className={`askpage-header-btn ${showHistory ? 'active' : ''}`}
-            onClick={() => { setShowHistory(!showHistory); if (!showHistory) loadConversations(); }}
-            title="Chat History"
-            aria-label="Chat history"
-          >
-            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5M12 16h.01" /></svg>
-          </button>
-          {messages.length > 0 && (
-            <button className="askpage-header-btn" onClick={clearConversation} title="New conversation" aria-label="New conversation">
-              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
-            </button>
-          )}
-          {!isFullScreen && (
-            <button className="askpage-header-btn" onClick={handleClose} title="Close" aria-label="Close">
-              <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
-            </button>
-          )}
-        </div>
-      </div>
+      {/* Header and Context bar */}
+      <ChatHeader
+        pageTitle={pageTitle}
+        pageUrl={pageUrl}
+        isFullScreen={isFullScreen}
+        showHistory={showHistory}
+        hasMessages={messages.length > 0}
+        onToggleHistory={() => {
+          setShowHistory(!showHistory);
+          if (!showHistory) loadConversations();
+        }}
+        onNewChat={clearConversation}
+        onClose={handleClose}
+      />
 
-      {/* Context bar — matches prototype .ctx: favicon + title + domain */}
-      <div className="askpage-ctx" title={`${pageTitle}\n${pageUrl}`}>
-        <svg className="askpage-fav" viewBox="0 0 24 24" fill="none" stroke="none">
-          <rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" stroke="none" />
-          <path d="M13 6l-5 7h4l-1 5 5-7h-4z" fill="#fff" stroke="none" />
-        </svg>
-        <b>{pageTitle || 'This page'}</b>
-        <span>{getDomain(pageUrl)}</span>
-      </div>
-
-      {/* Chat Messages — lined-paper area, matches prototype #v */}
-      <div className="askpage-messages" ref={messagesContainerRef} onScroll={handleMessagesScroll}>
-        {messages.length === 0 ? (
-          <div className="askpage-welcome">
-            <svg className="askpage-welcome-logo" viewBox="0 0 24 24" fill="none" stroke="none">
-              <rect width="24" height="24" rx="7" fill="currentColor" stroke="none" />
-              <path d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z" fill="#fff" stroke="none" />
-              <circle cx="10" cy="11" r="1.1" fill="currentColor" stroke="none" />
-              <circle cx="14" cy="11" r="1.1" fill="currentColor" stroke="none" />
-            </svg>
-            <h2>Hi, I'm BrowserBot</h2>
-            <p>I can read this page and your selection. Ask me anything about it.</p>
-            <span className="askpage-welcome-pick">
-              try one of these
-              <svg viewBox="0 0 40 30"><path d="M4 4c14 0 26 6 28 20M32 24l-6-5M32 24l5-6" /></svg>
-            </span>
-            <div className="askpage-welcome-prompts">
-              {(quickPrompts.length > 0 ? quickPrompts.slice(0, 4).map(p => ({ id: p.id, label: p.name })) : [
-                { id: 'summarize', label: 'Summarize this page' },
-                { id: 'explain', label: 'Explain the highlighted text' },
-                { id: 'extract', label: 'Extract the checklist' },
-                { id: 'code', label: 'What does this code do?' },
-              ]).map(item => (
-                <button
-                  key={item.id}
-                  className="askpage-welcome-prompt-btn"
-                  onClick={() => {
-                    const found = quickPrompts.find(p => p.id === item.id);
-                    if (found) handleQuickPromptSelect(found.id);
-                    else { setInput(item.label); inputRef.current?.focus(); }
-                  }}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <>
-            {messages.map((msg, i) => {
-              const isLastMessage = i === messages.length - 1;
-              const isCurrentlyStreaming = isStreaming && isLastMessage && msg.role === 'assistant';
-              const showLiveThinking = isCurrentlyStreaming && thinkingContent;
-
-              if (msg.role === 'user') {
-                return (
-                  <div key={i} className="askpage-m user">
-                    <div className="askpage-b">{msg.content}</div>
-                  </div>
-                );
-              }
-
-              if (msg.role === 'error') {
-                return (
-                  <div key={i} className="askpage-err" role="alert">
-                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5M12 16h.01" /></svg>
-                    <div>
-                      <b>Couldn't read this page's content</b>
-                      <p>{msg.content}</p>
-                      <button className="askpage-retry" onClick={() => { const lastUser = [...messages].reverse().find(m => m.role === 'user'); if (lastUser) { setInput(lastUser.content); } }}>Retry</button>
-                    </div>
-                  </div>
-                );
-              }
-
-              // assistant
-              const hasThinking = Boolean(showLiveThinking ? thinkingContent : msg.thinking);
-              const hasContent = Boolean(msg.content && msg.content.trim());
-
-              return (
-                <div key={i} className="askpage-m ai">
-                  <svg className="askpage-av" viewBox="0 0 24 24" fill="none" stroke="none">
-                    <rect width="24" height="24" rx="7" fill="currentColor" stroke="none" />
-                    <path d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z" fill="#fff" stroke="none" />
-                    <circle cx="10" cy="11" r="1.1" fill="currentColor" stroke="none" />
-                    <circle cx="14" cy="11" r="1.1" fill="currentColor" stroke="none" />
-                  </svg>
-                  <div className="askpage-ans">
-                    {hasThinking && (
-                      <details className="askpage-thinking-block" open={showLiveThinking ? thinkingExpanded : undefined}>
-                        <summary
-                          className="askpage-thinking-summary"
-                          onClick={showLiveThinking ? (e) => { e.preventDefault(); setThinkingExpanded(!thinkingExpanded); } : undefined}
-                        >
-                          {showLiveThinking ? 'Thinking…' : 'Thinking process'}
-                        </summary>
-                        <div
-                          className="askpage-thinking-content"
-                          dangerouslySetInnerHTML={{ __html: renderMarkdown((showLiveThinking ? thinkingContent : msg.thinking) as string) }}
-                        />
-                      </details>
-                    )}
-                    {hasContent ? (
-                      <div
-                        className="askpage-b"
-                        dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
-                      />
-                    ) : isCurrentlyStreaming ? (
-                      <div className="askpage-b askpage-dots">
-                        <svg className="askpage-scr" viewBox="0 0 64 16"><path pathLength={1} d="M2 8q5-12 10 0t10 0 10 0 10 0 10 0 10 0" /></svg>
-                        <span>{showLiveThinking ? 'Thinking…' : 'Thinking…'}</span>
-                      </div>
-                    ) : hasThinking ? (
-                      <div className="askpage-b">
-                        <div style={{ opacity: 0.75, fontStyle: 'italic', fontSize: '13px', margin: '4px 0 8px 0' }}>
-                          Thinking process completed without final output.
-                        </div>
-                        <button
-                          className="askpage-welcome-prompt-btn"
-                          style={{ fontSize: '12px', padding: '4px 10px', marginTop: '4px' }}
-                          onClick={() => {
-                            setInput('Please continue and provide your final response based on the thinking above.');
-                            inputRef.current?.focus();
-                          }}
-                        >
-                          Continue Response →
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-
-            <div ref={messagesEndRef} />
-          </>
-        )}
-      </div>
+      {/* Chat Messages */}
+      <MessageList
+        messages={messages}
+        isStreaming={isStreaming}
+        thinkingContent={thinkingContent}
+        thinkingExpanded={thinkingExpanded}
+        onToggleThinking={() => setThinkingExpanded(!thinkingExpanded)}
+        quickPrompts={quickPrompts}
+        onSelectPrompt={handleQuickPromptSelect}
+        onSelectFallbackPrompt={(label) => {
+          setInput(label);
+          inputRef.current?.focus();
+        }}
+        onRetry={() => {
+          const lastUser = [...messages].reverse().find(m => m.role === 'user');
+          if (lastUser) setInput(lastUser.content);
+        }}
+        onContinueResponse={() => {
+          setInput('Please continue and provide your final response based on the thinking above.');
+          inputRef.current?.focus();
+        }}
+        messagesContainerRef={messagesContainerRef}
+        messagesEndRef={messagesEndRef}
+        onScroll={handleMessagesScroll}
+        renderMarkdown={renderMarkdown}
+      />
 
       {/* Composer — matches prototype footer .cmp */}
       <div className="askpage-footer" onKeyDown={stopPropagation} onKeyUp={stopPropagation} onKeyPress={stopPropagation}>
@@ -1317,91 +1135,41 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
           </div>
 
           {slashOpen && (
-            <div className="askpage-slash" ref={slashMenuRef} role="listbox" aria-label="Commands">
-              <div className="askpage-slash-head">
-                {slashMode === 'root' ? 'Commands — type to filter, ↑↓ + Enter' : (
-                  <button className="askpage-slash-back" onClick={() => { setSlashMode('root'); setSlashQuery(''); setSlashIndex(0); }}>
-                    ← {slashMode}
-                  </button>
-                )}
-                <span className="askpage-slash-model">{getCurrentModelShort()}</span>
-              </div>
-              {slashOptions.length === 0 && (
-                <div className="askpage-slash-empty">No matches — Esc to close</div>
-              )}
-              {slashOptions.map((opt, idx) => (
-                <button
-                  key={opt.key}
-                  role="option"
-                  aria-selected={idx === slashIndex}
-                  data-active={idx === slashIndex}
-                  className={`askpage-slash-item ${idx === slashIndex ? 'active' : ''}`}
-                  onMouseEnter={() => setSlashIndex(idx)}
-                  onClick={() => selectSlashOption(opt)}
-                >
-                  <span className="askpage-slash-title">{opt.title}{opt.active ? ' ✓' : ''}</span>
-                  <span className="askpage-slash-desc">{opt.desc}</span>
-                  {opt.hint && <span className="askpage-slash-hint">{opt.hint}</span>}
-                </button>
-              ))}
-              <div className="askpage-slash-foot">/model · /prompt · /page · /tab — Esc to close</div>
-            </div>
+            <SlashMenu
+              menuRef={slashMenuRef}
+              slashMode={slashMode}
+              slashOptions={slashOptions}
+              slashIndex={slashIndex}
+              currentModelShort={getCurrentModelShort()}
+              onSetSlashIndex={setSlashIndex}
+              onBackToRoot={() => {
+                setSlashMode('root');
+                setSlashQuery('');
+                setSlashIndex(0);
+              }}
+              onSelectOption={selectSlashOption}
+            />
           )}
         </div>
       </div>
 
       {/* Tab Picker Modal */}
       {showTabPicker && (
-        <div className="askpage-tab-picker-overlay" onClick={() => setShowTabPicker(false)}>
-          <div className="askpage-tab-picker" onClick={e => e.stopPropagation()}>
-            <h4>Add Tab Context</h4>
-            <input
-              className="askpage-tab-picker-search"
-              placeholder="Search tabs…"
-              value={tabSearch}
-              onChange={e => setTabSearch(e.target.value)}
-              autoFocus
-            />
-            <div className="askpage-tab-picker-list">
-              {filteredTabs.map(tab => (
-                <button
-                  key={tab.id}
-                  className={`askpage-tab-picker-item ${selectedPickerTabs.includes(tab.id) ? 'selected' : ''}`}
-                  onClick={() => {
-                    setSelectedPickerTabs(prev =>
-                      prev.includes(tab.id)
-                        ? prev.filter(id => id !== tab.id)
-                        : [...prev, tab.id]
-                    );
-                  }}
-                >
-                  {tab.favIconUrl && (
-                    <img className="askpage-tab-picker-favicon" src={tab.favIconUrl} alt="" />
-                  )}
-                  <div className="askpage-tab-picker-info">
-                    <div className="askpage-tab-picker-title">{tab.title}</div>
-                    <div className="askpage-tab-picker-url">{tab.url}</div>
-                  </div>
-                </button>
-              ))}
-              {filteredTabs.length === 0 && (
-                <div style={{ padding: '16px', textAlign: 'center', color: '#6b7280', fontSize: '13px' }}>
-                  No tabs found
-                </div>
-              )}
-            </div>
-            <div className="askpage-tab-picker-actions">
-              <button className="askpage-tab-picker-btn cancel" onClick={() => setShowTabPicker(false)}>Cancel</button>
-              <button
-                className="askpage-tab-picker-btn confirm"
-                onClick={confirmTabSelection}
-                disabled={selectedPickerTabs.length === 0}
-              >
-                Add {selectedPickerTabs.length > 0 ? `(${selectedPickerTabs.length})` : ''}
-              </button>
-            </div>
-          </div>
-        </div>
+        <TabPickerModal
+          tabSearch={tabSearch}
+          onTabSearchChange={setTabSearch}
+          filteredTabs={filteredTabs}
+          selectedPickerTabs={selectedPickerTabs}
+          onToggleTab={(tabId) => {
+            setSelectedPickerTabs(prev =>
+              prev.includes(tabId)
+                ? prev.filter(id => id !== tabId)
+                : [...prev, tabId]
+            );
+          }}
+          onCancel={() => setShowTabPicker(false)}
+          onConfirm={confirmTabSelection}
+        />
       )}
     </div>
   );

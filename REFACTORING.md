@@ -132,7 +132,7 @@ This document tracks the incremental, behavior-preserving refactoring of the Bro
 
 ### Phase 2.4: Local Cleanups & Component Decomposition (P1, P2)
 
-- [ ] **Task 9: Decompose `AskPagePanel.tsx` (Sub-components extraction)**
+- [x] **Task 9: Decompose `AskPagePanel.tsx` (Sub-components extraction)**
   - **Problem IDs**: PRB-11
   - **Goal**: Split 1,403-line monolithic component into focused sub-components (`TabSelector`, `SlashCommands`, `ChatHeader`, `MessageList`) while strictly preserving styling and state.
   - **Files**: `entrypoints/ask-page.content/AskPagePanel.tsx`, `entrypoints/ask-page.content/components/*`
