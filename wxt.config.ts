@@ -16,7 +16,7 @@ export default defineConfig({
     host_permissions: ['<all_urls>'],
     web_accessible_resources: [
       {
-        resources: ['fonts/*'],
+        resources: ['fonts/*', 'content-scripts/*'],
         matches: ['<all_urls>'],
       },
     ],

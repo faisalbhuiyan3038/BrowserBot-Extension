@@ -121,7 +121,7 @@ export default defineBackground(() => {
     }
 
     if (message.type === 'TOGGLE_ASK_PAGE') {
-      handleToggleAskPage(message);
+      handleToggleAskPage(message, sender);
       return false;
     }
 
@@ -225,32 +225,55 @@ export default defineBackground(() => {
     } catch (_) {}
   }
 
-  // ─── Toggle Ask Page overlay on active tab ─────────────────
-  async function handleToggleAskPage(message: any) {
-    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) return;
+  // Active streams tracking to prevent collisions and race conditions
+  const activeChatStreams = new Map<string, AbortController>();
 
-    const tabId = tab.id;
+  // ─── Toggle Ask Page overlay on active tab ─────────────────
+  async function handleToggleAskPage(message: any, sender?: any) {
+    let tabId = sender?.tab?.id;
+    let pageTitle = sender?.tab?.title || '';
+    let pageUrl = sender?.tab?.url || '';
+
+    if (!tabId) {
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) return;
+      tabId = tab.id;
+      pageTitle = tab.title || '';
+      pageUrl = tab.url || '';
+    }
+
     const payload = {
       type: 'TOGGLE_ASK_PAGE',
-      pageTitle: tab.title || '',
-      pageUrl: tab.url || ''
+      pageTitle,
+      pageUrl
     };
 
     // Try sending the message to the content script
     try {
       await browser.tabs.sendMessage(tabId, payload);
     } catch (_) {
-      // Content script might not be ready yet (common on Firefox Android).
-      // Wait a moment and retry once.
+      // Content script is not reachable. Try injecting it dynamically.
+      try {
+        if (browser.scripting?.executeScript) {
+          await browser.scripting.executeScript({
+            target: { tabId },
+            files: ['/content-scripts/ask-page.js']
+          });
+          // Wait briefly for content script to mount and register message listener
+          await new Promise(r => setTimeout(r, 150));
+          await browser.tabs.sendMessage(tabId, payload);
+          return;
+        }
+      } catch (injectErr: any) {
+        console.warn('BrowserBot: Programmatic injection fallback failed:', injectErr?.message);
+      }
+
+      // Retry once after a short delay
       try {
         await new Promise(r => setTimeout(r, 300));
         await browser.tabs.sendMessage(tabId, payload);
       } catch (_) {
-        // Still failed — content script is not injected.
-        // This can happen on Firefox Android if the tab was opened before
-        // the extension was installed, or on restricted pages.
-        console.warn('Content script not reachable for tab', tabId, '— cannot toggle Ask Page.');
+        console.warn('BrowserBot: Content script not reachable for tab', tabId, '— cannot toggle Ask Page.');
       }
     }
   }
@@ -265,10 +288,17 @@ export default defineBackground(() => {
     const providerType: AIProviderType | undefined = message.providerType;
     const openaiProviderId: string | undefined = message.openaiProviderId;
 
+    // Abort any existing stream for this tab/session to avoid collisions
+    const streamKey = isExtensionPage ? (message.sessionId || 'ext') : String(tabId);
+    if (activeChatStreams.has(streamKey)) {
+      activeChatStreams.get(streamKey)?.abort();
+      activeChatStreams.delete(streamKey);
+    }
+
     const abortController = new AbortController();
+    activeChatStreams.set(streamKey, abortController);
 
     const abortListener = (msg: any, abortSender: any) => {
-      // Abort either matching tabId, or matching extension page session
       if (msg.type === 'ASK_PAGE_CHAT_ABORT') {
         if (isExtensionPage && msg.sessionId === message.sessionId) abortController.abort();
         else if (!isExtensionPage && abortSender.tab?.id === tabId) abortController.abort();
@@ -277,6 +307,8 @@ export default defineBackground(() => {
     browser.runtime.onMessage.addListener(abortListener);
 
     const dispatchChunk = (payload: any) => {
+      // Don't dispatch if this stream was aborted
+      if (abortController.signal.aborted) return;
       if (isExtensionPage) {
         browser.runtime.sendMessage(payload).catch(() => {});
       } else if (tabId) {
@@ -297,13 +329,18 @@ export default defineBackground(() => {
         }
       });
 
-      dispatchChunk({ type: 'ASK_PAGE_CHAT_DONE', sessionId: message.sessionId });
+      if (!abortController.signal.aborted) {
+        dispatchChunk({ type: 'ASK_PAGE_CHAT_DONE', sessionId: message.sessionId });
+      }
     } catch (err: any) {
-      if (err.name !== 'AbortError') {
+      if (err.name !== 'AbortError' && !abortController.signal.aborted) {
         dispatchChunk({ type: 'ASK_PAGE_CHAT_ERROR', error: err.message || 'Unknown error', sessionId: message.sessionId });
       }
     } finally {
       browser.runtime.onMessage.removeListener(abortListener);
+      if (activeChatStreams.get(streamKey) === abortController) {
+        activeChatStreams.delete(streamKey);
+      }
     }
   }
 

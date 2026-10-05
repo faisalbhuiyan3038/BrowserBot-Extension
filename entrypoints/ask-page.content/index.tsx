@@ -6,7 +6,7 @@ import { getStyles, getRoughFilterSVG, ensurePanelFonts } from '../../utils/chat
 
 export default defineContentScript({
   matches: ['<all_urls>'],
-  cssInjectionMode: 'ui',
+  cssInjectionMode: 'manual',
 
   async main(ctx) {
     // ── Passive DevTools data capture ──────────────────────────────────────
@@ -153,6 +153,7 @@ export default defineContentScript({
         name: 'browserbot-ask-page',
         position: 'overlay',
         zIndex: 2147483646,
+        css: '',
         onMount(container) {
           // Inject styles and rough filter into shadow root
           const style = document.createElement('style');

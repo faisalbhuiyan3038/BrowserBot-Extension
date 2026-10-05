@@ -220,6 +220,84 @@ async function streamWithChromeAI(
   }
 }
 
+// ─── Stream router to intercept <think>...</think> tags in content ───
+
+function createContentStreamRouter(
+  onChunk: (chunk: string) => void,
+  onThinkingChunk?: (chunk: string) => void
+) {
+  let inThinkTag = false;
+  let tagBuffer = '';
+
+  return {
+    handleChunk(text: string) {
+      if (!text) return;
+      if (!onThinkingChunk) {
+        onChunk(text);
+        return;
+      }
+
+      let combined = tagBuffer + text;
+      tagBuffer = '';
+      let i = 0;
+
+      while (i < combined.length) {
+        if (!inThinkTag) {
+          const thinkIdx = combined.indexOf('<think>', i);
+          if (thinkIdx === -1) {
+            const possibleTagStart = combined.lastIndexOf('<', combined.length - 1);
+            if (possibleTagStart >= i && '<think>'.startsWith(combined.slice(possibleTagStart))) {
+              const before = combined.slice(i, possibleTagStart);
+              if (before) onChunk(before);
+              tagBuffer = combined.slice(possibleTagStart);
+              break;
+            }
+            const chunk = combined.slice(i);
+            if (chunk) onChunk(chunk);
+            break;
+          } else {
+            const before = combined.slice(i, thinkIdx);
+            if (before) onChunk(before);
+            inThinkTag = true;
+            i = thinkIdx + '<think>'.length;
+            if (combined[i] === '\n') i++;
+          }
+        } else {
+          const closeIdx = combined.indexOf('</think>', i);
+          if (closeIdx === -1) {
+            const possibleTagStart = combined.lastIndexOf('<', combined.length - 1);
+            if (possibleTagStart >= i && '</think>'.startsWith(combined.slice(possibleTagStart))) {
+              const thinkingPart = combined.slice(i, possibleTagStart);
+              if (thinkingPart) onThinkingChunk(thinkingPart);
+              tagBuffer = combined.slice(possibleTagStart);
+              break;
+            }
+            const thinkingPart = combined.slice(i);
+            if (thinkingPart) onThinkingChunk(thinkingPart);
+            break;
+          } else {
+            const thinkingPart = combined.slice(i, closeIdx);
+            if (thinkingPart) onThinkingChunk(thinkingPart);
+            inThinkTag = false;
+            i = closeIdx + '</think>'.length;
+            if (combined[i] === '\n') i++;
+          }
+        }
+      }
+    },
+    flush() {
+      if (tagBuffer) {
+        if (inThinkTag && onThinkingChunk) {
+          onThinkingChunk(tagBuffer);
+        } else {
+          onChunk(tagBuffer);
+        }
+        tagBuffer = '';
+      }
+    }
+  };
+}
+
 // ─── Ollama (Streaming with Thinking Support) ───────────────
 
 async function streamWithOllama(
@@ -235,7 +313,10 @@ async function streamWithOllama(
       model: state.ollamaModel,
       messages: messages.map(m => ({ role: m.role, content: m.content })),
       stream: true,
-      think: true   // Enable thinking/reasoning for supported models
+      think: true,   // Enable thinking/reasoning for supported models
+      options: {
+        num_ctx: 16384  // Prevent context window exhaustion on page analysis + reasoning
+      }
     }),
     signal: options.signal
   });
@@ -253,6 +334,17 @@ async function streamWithOllama(
   let fullThinking = '';
   let buffer = '';
 
+  const router = createContentStreamRouter(
+    (chunk) => {
+      fullText += chunk;
+      options.onChunk(chunk);
+    },
+    options.onThinkingChunk ? (chunk) => {
+      fullThinking += chunk;
+      options.onThinkingChunk!(chunk);
+    } : undefined
+  );
+
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -267,23 +359,23 @@ async function streamWithOllama(
       try {
         const data = JSON.parse(line);
 
-        // Handle thinking tokens (separate field from content)
+        // Handle native thinking tokens (separate field from content)
         const thinkingChunk = data.message?.thinking || '';
         if (thinkingChunk && options.onThinkingChunk) {
           fullThinking += thinkingChunk;
           options.onThinkingChunk(thinkingChunk);
         }
 
-        // Handle content tokens
+        // Handle content tokens (auto-routes embedded <think> tags if present)
         const chunk = data.message?.content || '';
         if (chunk) {
-          fullText += chunk;
-          options.onChunk(chunk);
+          router.handleChunk(chunk);
         }
       } catch (_) { }
     }
   }
 
+  router.flush();
   return fullText;
 }
 
@@ -336,6 +428,17 @@ async function streamWithOpenAI(
   let fullThinking = '';
   let buffer = '';
 
+  const router = createContentStreamRouter(
+    (chunk) => {
+      fullText += chunk;
+      options.onChunk(chunk);
+    },
+    options.onThinkingChunk ? (chunk) => {
+      fullThinking += chunk;
+      options.onThinkingChunk!(chunk);
+    } : undefined
+  );
+
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -363,15 +466,15 @@ async function streamWithOpenAI(
           options.onThinkingChunk(reasoningChunk);
         }
 
-        // Handle regular content
+        // Handle regular content (auto-routes embedded <think> tags if present)
         const chunk = delta.content || '';
         if (chunk) {
-          fullText += chunk;
-          options.onChunk(chunk);
+          router.handleChunk(chunk);
         }
       } catch (_) { }
     }
   }
 
+  router.flush();
   return fullText;
 }

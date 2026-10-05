@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
-import { AppStorage, SystemPrompt, OpenAIProvider, AIProviderType, ExtractionAlgorithm, Conversation, ChatMsg, generateId } from '../../utils/storage';
+import { AppStorage, SystemPrompt, OpenAIProvider, AIProviderType, ExtractionAlgorithm, Conversation, ChatMsg, generateId, generateUUID } from '../../utils/storage';
 import { extractPageContent } from '../../utils/extractor';
 
 // Hardcoded instruction always appended to Ask Page system prompts
@@ -235,17 +235,12 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     }
   }, [onRegisterShow, closing]);
 
-  const sessionIdRef = useRef<string>('');
-  useEffect(() => {
-    if (!sessionIdRef.current) {
-      sessionIdRef.current = crypto.randomUUID();
-    }
-  }, []);
+  const activeRequestIdRef = useRef<string>('');
 
   // ─── Listen for streaming chunks + sync ─────────────
   useEffect(() => {
     const listener = (message: any) => {
-      if (message.sessionId && message.sessionId !== sessionIdRef.current) return;
+      if (message.sessionId && message.sessionId !== activeRequestIdRef.current) return;
       
       if (message.type === 'ASK_PAGE_CHAT_CHUNK') {
         streamingContentRef.current += message.chunk;
@@ -262,18 +257,20 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
         setThinkingContent(streamingThinkingRef.current);
         setThinkingExpanded(true);
       } else if (message.type === 'ASK_PAGE_CHAT_DONE') {
-        // Capture thinking before clearing refs (prevents race condition)
         const savedThinking = streamingThinkingRef.current;
-        if (savedThinking) {
-          setMessages(prev => {
-            const updated = [...prev];
-            const lastIdx = updated.length - 1;
-            if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
-              updated[lastIdx] = { ...updated[lastIdx], thinking: savedThinking };
-            }
-            return updated;
-          });
-        }
+        const finalContent = streamingContentRef.current;
+        setMessages(prev => {
+          const updated = [...prev];
+          const lastIdx = updated.length - 1;
+          if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
+            updated[lastIdx] = {
+              ...updated[lastIdx],
+              content: finalContent,
+              thinking: savedThinking || updated[lastIdx].thinking
+            };
+          }
+          return updated;
+        });
         setIsStreaming(false);
         setThinkingExpanded(false);
         streamingContentRef.current = '';
@@ -412,7 +409,14 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     // Add conversation history
     for (const msg of messages) {
       if (msg.role === 'error') continue;
-      chatMessages.push({ role: msg.role, content: msg.content });
+      if (msg.role === 'assistant') {
+        const content = msg.content || (msg.thinking ? `[Thinking process: ${msg.thinking}]` : '');
+        if (content) {
+          chatMessages.push({ role: 'assistant', content });
+        }
+      } else {
+        chatMessages.push({ role: msg.role, content: msg.content });
+      }
     }
 
     chatMessages.push({ role: 'user', content: text });
@@ -426,6 +430,17 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
       console.log('Current Page Content Snippet:', currentTabContent.substring(0, 500) + '...');
     }
     console.groupEnd();
+
+    // Abort previous stream if one was active
+    if (activeRequestIdRef.current) {
+      browser.runtime.sendMessage({
+        type: 'ASK_PAGE_CHAT_ABORT',
+        sessionId: activeRequestIdRef.current
+      }).catch(() => {});
+    }
+
+    const newRequestId = generateUUID();
+    activeRequestIdRef.current = newRequestId;
 
     // Update UI
     setMessages(prev => [
@@ -448,7 +463,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
       messages: chatMessages,
       providerType,
       openaiProviderId: selectedOpenAIId,
-      sessionId: sessionIdRef.current
+      sessionId: newRequestId
     });
   };
 
@@ -938,7 +953,10 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
 
   // ─── Abort streaming ────────────────────────────────
   const abortStream = () => {
-    browser.runtime.sendMessage({ type: 'ASK_PAGE_CHAT_ABORT' });
+    browser.runtime.sendMessage({
+      type: 'ASK_PAGE_CHAT_ABORT',
+      sessionId: activeRequestIdRef.current
+    }).catch(() => {});
     setIsStreaming(false);
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
@@ -1144,6 +1162,9 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
               }
 
               // assistant
+              const hasThinking = Boolean(showLiveThinking ? thinkingContent : msg.thinking);
+              const hasContent = Boolean(msg.content && msg.content.trim());
+
               return (
                 <div key={i} className="askpage-m ai">
                   <svg className="askpage-av" viewBox="0 0 24 24" fill="none" stroke="none">
@@ -1153,7 +1174,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
                     <circle cx="14" cy="11" r="1.1" fill="currentColor" stroke="none" />
                   </svg>
                   <div className="askpage-ans">
-                    {(msg.thinking || showLiveThinking) && (
+                    {hasThinking && (
                       <details className="askpage-thinking-block" open={showLiveThinking ? thinkingExpanded : undefined}>
                         <summary
                           className="askpage-thinking-summary"
@@ -1167,31 +1188,38 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
                         />
                       </details>
                     )}
-                    <div
-                      className="askpage-b"
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) || '<span style="opacity:0.3">Thinking…</span>' }}
-                    />
+                    {hasContent ? (
+                      <div
+                        className="askpage-b"
+                        dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                      />
+                    ) : isCurrentlyStreaming ? (
+                      <div className="askpage-b askpage-dots">
+                        <svg className="askpage-scr" viewBox="0 0 64 16"><path pathLength={1} d="M2 8q5-12 10 0t10 0 10 0 10 0 10 0 10 0" /></svg>
+                        <span>{showLiveThinking ? 'Thinking…' : 'Thinking…'}</span>
+                      </div>
+                    ) : hasThinking ? (
+                      <div className="askpage-b">
+                        <div style={{ opacity: 0.75, fontStyle: 'italic', fontSize: '13px', margin: '4px 0 8px 0' }}>
+                          Thinking process completed without final output.
+                        </div>
+                        <button
+                          className="askpage-welcome-prompt-btn"
+                          style={{ fontSize: '12px', padding: '4px 10px', marginTop: '4px' }}
+                          onClick={() => {
+                            setInput('Please continue and provide your final response based on the thinking above.');
+                            inputRef.current?.focus();
+                          }}
+                        >
+                          Continue Response →
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               );
             })}
 
-            {isStreaming && !thinkingContent && messages[messages.length - 1]?.content === '' && (
-              <div className="askpage-m ai">
-                <svg className="askpage-av" viewBox="0 0 24 24" fill="none" stroke="none">
-                  <rect width="24" height="24" rx="7" fill="currentColor" stroke="none" />
-                  <path d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z" fill="#fff" stroke="none" />
-                  <circle cx="10" cy="11" r="1.1" fill="currentColor" stroke="none" />
-                  <circle cx="14" cy="11" r="1.1" fill="currentColor" stroke="none" />
-                </svg>
-                <div className="askpage-ans">
-                  <div className="askpage-b askpage-dots">
-                    <svg className="askpage-scr" viewBox="0 0 64 16"><path pathLength={1} d="M2 8q5-12 10 0t10 0 10 0 10 0 10 0 10 0" /></svg>
-                    <span>Skimming the page…</span>
-                  </div>
-                </div>
-              </div>
-            )}
             <div ref={messagesEndRef} />
           </>
         )}

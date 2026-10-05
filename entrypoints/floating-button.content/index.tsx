@@ -2,7 +2,7 @@ import { getStyles, getRoughFilterSVG } from '../../utils/chatStyles';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
-  cssInjectionMode: 'ui',
+  cssInjectionMode: 'manual',
   runAt: 'document_idle',
 
   async main(ctx) {
@@ -76,6 +76,7 @@ export default defineContentScript({
         name: 'browserbot-floating-button',
         position: 'overlay',
         zIndex: 2147483645,
+        css: '',
         onMount(container) {
           const style = document.createElement('style');
           style.textContent = getStyles();

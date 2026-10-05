@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
-import { AppStorage, OpenAIProvider, AIProviderType, ChatMsg, Conversation, generateId } from '../../utils/storage';
+import { AppStorage, OpenAIProvider, AIProviderType, ChatMsg, Conversation, generateId, generateUUID } from '../../utils/storage';
 
 marked.setOptions({ breaks: true, gfm: true });
 
@@ -140,7 +140,7 @@ export default function AskDevtoolsPanel() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const streamingContentRef = useRef('');
   const streamingThinkingRef = useRef('');
-  const sessionIdRef = useRef<string>(crypto.randomUUID());
+  const sessionIdRef = useRef<string>(generateUUID());
   const harEntriesRef = useRef<any[]>([]);
   const requestCacheRef = useRef<any[]>([]);
 
