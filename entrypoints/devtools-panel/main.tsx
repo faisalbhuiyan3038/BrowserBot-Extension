@@ -1,13 +1,22 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AskDevtoolsPanel from './AskDevtoolsPanel';
-import { getStyles } from '../../utils/chatStyles';
+import { getStyles, ensurePanelFonts, getRoughFilterSVG } from '../../utils/chatStyles';
+
+// Register fonts
+void ensurePanelFonts();
 
 // Inject styles globally since we are not in shadow DOM
 const style = document.createElement('style');
-// Replace :host pseudo-class with body for global styling
-style.textContent = getStyles().replace(/:host/g, 'body');
+style.textContent = getStyles().replace(/:host/g, ':root, body');
 document.head.appendChild(style);
+
+// Inject rough filter SVG if not already present
+if (!document.getElementById('rough')) {
+  const filterContainer = document.createElement('div');
+  filterContainer.innerHTML = getRoughFilterSVG();
+  document.body.appendChild(filterContainer);
+}
 
 // Add base styles for the full screen standalone tab
 document.body.style.margin = '0';

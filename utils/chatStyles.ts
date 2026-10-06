@@ -199,6 +199,18 @@ ${fonts}
 
 button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; }
 input, textarea, select { font: inherit; color: inherit; }
+.askpage-select {
+  padding: 4px 8px;
+  font: 600 13px var(--font);
+  border: 1.5px solid var(--bd);
+  border-radius: var(--rs);
+  background: var(--sub);
+  color: var(--fg);
+  cursor: pointer;
+  outline: none;
+  transition: .15s;
+}
+.askpage-select:focus { border-color: var(--ac); }
 textarea { resize: none; }
 textarea::-webkit-resizer { display: none; }
 :focus-visible { outline: 2px dashed var(--ac); outline-offset: 3px; }
@@ -631,6 +643,7 @@ pre:hover .askpage-copy-btn, .askpage-copy-btn:focus-visible { opacity: 1; }
 }
 #browserbot-floating-btn:hover:not(.panel-open) { transform: scale(1.08) rotate(-4deg); }
 #browserbot-floating-btn svg { width: 20px; height: 20px; color: var(--acfg); }
+#browserbot-floating-btn img { width: 24px; height: 24px; object-fit: contain; pointer-events: none; display: block; }
 
 /* Hidden smoothly when Ask Page panel is open */
 #browserbot-floating-btn.panel-open {

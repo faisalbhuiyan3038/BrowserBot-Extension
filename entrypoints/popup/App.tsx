@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import iconUrl from '../../assets/icon.svg';
+import iconUrl from '../../assets/icon-alt.png';
 import { groupTabsWithAI, TabInfo, ExistingGroup, organizeBookmarksWithAI } from '../../utils/ai';
 import { AppStorage, SystemPrompt, generateUUID } from '../../utils/storage';
 import {

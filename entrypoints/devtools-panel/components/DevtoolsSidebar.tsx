@@ -306,10 +306,10 @@ export const DevtoolsSidebar: React.FC<DevtoolsSidebarProps> = ({
               style={{
                 fontSize: '12px',
                 padding: '6px 10px',
-                borderRadius: '6px',
-                background: captureStatus.startsWith('✅') ? '#052e16' : '#450a0a',
-                color: captureStatus.startsWith('✅') ? '#4ade80' : '#f87171',
-                border: `1px solid ${captureStatus.startsWith('✅') ? '#166534' : '#7f1d1d'}`,
+                borderRadius: 'var(--rs)',
+                background: captureStatus.startsWith('✅') ? 'var(--sub)' : 'rgba(200, 55, 45, 0.12)',
+                color: captureStatus.startsWith('✅') ? 'var(--fg)' : 'var(--er)',
+                border: `1.5px solid ${captureStatus.startsWith('✅') ? 'var(--bd)' : 'var(--er)'}`,
               }}
             >
               {captureStatus}
@@ -325,9 +325,9 @@ export const DevtoolsSidebar: React.FC<DevtoolsSidebarProps> = ({
                   fontWeight: 700,
                   letterSpacing: '0.06em',
                   textTransform: 'uppercase',
-                  color: '#6b7280',
-                  paddingTop: '4px',
-                  borderTop: '1px solid #2a2b35',
+                  color: 'var(--mute)',
+                  paddingTop: '6px',
+                  borderTop: '1.5px dashed var(--bd)',
                 }}
               >
                 Context Payload
@@ -359,8 +359,8 @@ export const DevtoolsSidebar: React.FC<DevtoolsSidebarProps> = ({
               {capturedData.logs && capturedData.logs.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#d1d5db' }}>Console Logs</span>
-                    <span style={S.badge('#374151')}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--fg)' }}>Console Logs</span>
+                    <span style={S.badge('var(--sub)')}>
                       {selectedLogIds.size}/{capturedData.logs.length}
                     </span>
                   </div>
@@ -385,10 +385,10 @@ export const DevtoolsSidebar: React.FC<DevtoolsSidebarProps> = ({
               {capturedData.network && capturedData.network.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#d1d5db' }}>Network</span>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--fg)' }}>Network</span>
                     <span
                       style={S.badge(
-                        selectedNetworkIds.size < capturedData.network.length ? '#7c3aed' : '#374151'
+                        selectedNetworkIds.size < capturedData.network.length ? 'var(--acs)' : 'var(--sub)'
                       )}
                     >
                       {selectedNetworkIds.size}/{capturedData.network.length}
@@ -398,10 +398,11 @@ export const DevtoolsSidebar: React.FC<DevtoolsSidebarProps> = ({
                       style={{
                         marginLeft: 'auto',
                         fontSize: '11px',
+                        fontWeight: 600,
                         cursor: 'pointer',
                         background: 'none',
                         border: 'none',
-                        color: '#60a5fa',
+                        color: 'var(--ac)',
                       }}
                     >
                       All
@@ -410,10 +411,11 @@ export const DevtoolsSidebar: React.FC<DevtoolsSidebarProps> = ({
                       onClick={onDeselectAllNetwork}
                       style={{
                         fontSize: '11px',
+                        fontWeight: 600,
                         cursor: 'pointer',
                         background: 'none',
                         border: 'none',
-                        color: '#60a5fa',
+                        color: 'var(--mute)',
                       }}
                     >
                       None
@@ -456,17 +458,18 @@ export const DevtoolsSidebar: React.FC<DevtoolsSidebarProps> = ({
                                 fontSize: '10px',
                                 padding: '1px 5px',
                                 borderRadius: '3px',
-                                background: req.status >= 400 ? '#7f1d1d' : '#1e3a5f',
-                                color: req.status >= 400 ? '#fca5a5' : '#93c5fd',
+                                background: req.status >= 400 ? 'rgba(200, 55, 45, 0.15)' : 'var(--sub)',
+                                color: req.status >= 400 ? 'var(--er)' : 'var(--fg)',
+                                border: '1px solid var(--bd)',
                                 flexShrink: 0,
                               }}
                             >
                               {req.method}
                             </span>
-                            <span style={{ color: req.status >= 400 ? '#f87171' : '#9ca3af' }}>{req.status}</span>
+                            <span style={{ color: req.status >= 400 ? 'var(--er)' : 'var(--mute)' }}>{req.status}</span>
                             <span
                               style={{
-                                color: '#d1d5db',
+                                color: 'var(--fg)',
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
@@ -503,14 +506,14 @@ export const DevtoolsSidebar: React.FC<DevtoolsSidebarProps> = ({
             gap: '16px',
           }}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--mute)" strokeWidth="2">
             <circle cx="12" cy="12" r="10" />
             <line x1="12" y1="8" x2="12" y2="12" />
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
           {capturedData && (
             <div
-              style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#4ade80' }}
+              style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--ac)' }}
               title="Data captured"
             />
           )}

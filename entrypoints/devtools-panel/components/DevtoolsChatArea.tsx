@@ -32,9 +32,20 @@ interface DevtoolsChatAreaProps {
   setInput: (value: string) => void;
   handleKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   capturedData: DevToolsData | null;
+  isCapturing: boolean;
+  onCapture: () => void;
   abortStream: () => void;
-  sendMessage: () => void;
+  sendMessage: (customText?: string) => void;
+  onRetry: () => void;
+  onSelectWelcomePrompt: (promptText: string) => void;
 }
+
+const WELCOME_PROMPTS = [
+  'What network requests failed or are taking over 1s?',
+  'Explain the recent console errors and how to fix them',
+  'Analyze the selected DOM element ($0) and recommend optimizations',
+  'Audit page load timing, paint metrics, and memory usage',
+];
 
 export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
   showHistory,
@@ -66,8 +77,12 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
   setInput,
   handleKeyDown,
   capturedData,
+  isCapturing,
+  onCapture,
   abortStream,
   sendMessage,
+  onRetry,
+  onSelectWelcomePrompt,
 }) => {
   return (
     <div
@@ -81,7 +96,7 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
         overflow: 'hidden',
       }}
     >
-      {/* History sidebar */}
+      {/* ─── History Drawer ─── */}
       {showHistory && (
         <div
           className="askpage-history-sidebar"
@@ -146,52 +161,23 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
         </div>
       )}
 
-      {/* Header */}
+      {/* ─── Header ─── */}
       <div
-        className="askpage-controls"
+        className="askpage-header"
         style={{
-          padding: '10px 16px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
           borderBottom: '1.5px solid var(--bd)',
+          padding: '10px 14px',
         }}
       >
-        <button
-          className={`askpage-header-btn askpage-history-btn ${showHistory ? 'active' : ''}`}
-          onClick={() => {
-            setShowHistory(!showHistory);
-            if (!showHistory) loadConversations();
-          }}
-          title="Chat History"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            className={`askpage-header-btn ${showHistory ? 'active' : ''}`}
+            onClick={() => {
+              setShowHistory(!showHistory);
+              if (!showHistory) loadConversations();
+            }}
+            title="Chat History"
           >
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 6 12 12 16 14" />
-          </svg>
-        </button>
-        <span
-          style={{
-            fontSize: '24px',
-            fontWeight: 700,
-            fontFamily: 'var(--hfont)',
-            color: 'var(--fg)',
-            flex: 1,
-          }}
-        >
-          <b>BrowserBot Debugger</b>
-        </span>
-        {messages.length > 0 && (
-          <button className="askpage-header-btn" onClick={clearConversation} title="New conversation">
             <svg
               width="16"
               height="16"
@@ -202,114 +188,224 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <path d="M12 5v14M5 12h14" />
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
             </svg>
           </button>
-        )}
-        <select
-          className="askpage-select"
-          style={{ width: 'auto' }}
-          value={providerType === 'openai' ? `openai:${selectedOpenAIId}` : providerType}
-          onChange={e => {
-            const v = e.target.value;
-            if (v.startsWith('openai:')) {
-              setProviderType('openai');
-              setSelectedOpenAIId(v.replace('openai:', ''));
-            } else {
-              setProviderType(v as AIProviderType);
-            }
-          }}
-        >
-          {openaiProviders.map(p => (
-            <option key={p.id} value={`openai:${p.id}`}>
-              {p.name} ({p.model})
-            </option>
-          ))}
-          <option value="ollama">Ollama ({ollamaModel})</option>
-          <option value="chrome_ai">Chrome AI</option>
-        </select>
+          <div className="askpage-brand">
+            <svg className="askpage-logo" viewBox="0 0 24 24" fill="none" stroke="none">
+              <rect width="24" height="24" rx="7" fill="currentColor" stroke="none" />
+              <path
+                d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z"
+                fill="#fff"
+                stroke="none"
+              />
+              <circle cx="10" cy="11" r="1.1" fill="currentColor" stroke="none" />
+              <circle cx="14" cy="11" r="1.1" fill="currentColor" stroke="none" />
+            </svg>
+            <span className="askpage-header-title">
+              <b>BrowserBot Debugger</b>
+            </span>
+          </div>
+        </div>
+
+        <div className="askpage-acts">
+          {messages.length > 0 && (
+            <button className="askpage-header-btn" onClick={clearConversation} title="New conversation">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          )}
+          <select
+            className="askpage-select"
+            value={providerType === 'openai' ? `openai:${selectedOpenAIId}` : providerType}
+            onChange={e => {
+              const v = e.target.value;
+              if (v.startsWith('openai:')) {
+                setProviderType('openai');
+                setSelectedOpenAIId(v.replace('openai:', ''));
+              } else {
+                setProviderType(v as AIProviderType);
+              }
+            }}
+          >
+            {openaiProviders.map(p => (
+              <option key={p.id} value={`openai:${p.id}`}>
+                {p.name} ({p.model})
+              </option>
+            ))}
+            <option value="ollama">Ollama ({ollamaModel || 'default'})</option>
+            <option value="chrome_ai">Chrome AI</option>
+          </select>
+        </div>
       </div>
 
-      {/* Messages */}
-      <div
-        className="askpage-messages"
-        ref={messagesContainerRef}
-        style={{ flex: 1, overflowY: 'auto', padding: '16px' }}
-      >
+      {/* ─── Context Bar (Tape effect) ─── */}
+      {capturedData && (
+        <div
+          className="askpage-ctx"
+          style={{ margin: '8px 14px 0' }}
+          title={capturedData.metadata?.url || 'Captured context'}
+        >
+          <svg className="askpage-fav" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+          </svg>
+          <b>{capturedData.metadata?.title || 'Inspected Webpage'}</b>
+          <span>
+            {[
+              capturedData.dom ? `<${capturedData.dom.tag.toLowerCase()}>` : null,
+              capturedData.logs?.length ? `${capturedData.logs.length} logs` : null,
+              capturedData.network?.length ? `${capturedData.network.length} reqs` : null,
+              capturedData.performance ? 'Perf' : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
+        </div>
+      )}
+
+      {/* ─── Messages list (Ruled Notebook Background) ─── */}
+      <div className="askpage-messages" ref={messagesContainerRef}>
         {messages.length === 0 ? (
           <div className="askpage-welcome">
-            <h3>Hi, I'm BrowserBot Debugger</h3>
-            <p>
-              Capture DevTools context from the sidebar, select exactly what to share, and ask the AI to debug, optimize,
-              or explain.
-            </p>
+            <svg className="askpage-welcome-logo" viewBox="0 0 24 24" fill="none" stroke="none">
+              <rect width="24" height="24" rx="7" fill="currentColor" stroke="none" />
+              <path
+                d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z"
+                fill="#fff"
+                stroke="none"
+              />
+              <circle cx="10" cy="11" r="1.1" fill="currentColor" stroke="none" />
+              <circle cx="14" cy="11" r="1.1" fill="currentColor" stroke="none" />
+            </svg>
+            <h2>Hi, I'm BrowserBot Debugger</h2>
+            <p>I have live access to your console logs, network requests, DOM elements, and performance metrics.</p>
+            <span className="askpage-welcome-pick">
+              try one of these
+              <svg viewBox="0 0 40 30">
+                <path d="M4 4c14 0 26 6 28 20M32 24l-6-5M32 24l5-6" />
+              </svg>
+            </span>
+            <div className="askpage-welcome-prompts">
+              {WELCOME_PROMPTS.map((promptText, idx) => (
+                <button
+                  key={idx}
+                  className="askpage-welcome-prompt-btn"
+                  onClick={() => onSelectWelcomePrompt(promptText)}
+                >
+                  {promptText}
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           messages.map((msg, i) => {
-            const isLast = i === messages.length - 1;
-            const streaming = isStreaming && isLast && msg.role === 'assistant';
-            const liveThinking = streaming && thinkingContent;
+            const isLastMessage = i === messages.length - 1;
+            const isCurrentlyStreaming = isStreaming && isLastMessage && msg.role === 'assistant';
+            const showLiveThinking = isCurrentlyStreaming && Boolean(thinkingContent);
+
+            if (msg.role === 'user') {
+              return (
+                <div key={i} className="askpage-m user">
+                  <div className="askpage-b">{msg.content}</div>
+                </div>
+              );
+            }
+
+            if (msg.role === 'error') {
+              return (
+                <div key={i} className="askpage-err" role="alert">
+                  <svg viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 7.5v5M12 16h.01" />
+                  </svg>
+                  <div>
+                    <b>Request Error</b>
+                    <p>{msg.content}</p>
+                    <button className="askpage-retry" onClick={onRetry}>
+                      Retry
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+
+            // Assistant response
+            const hasThinking = Boolean(showLiveThinking ? thinkingContent : msg.thinking);
+            const hasContent = Boolean(msg.content && msg.content.trim());
+
             return (
-              <div key={i} className={`askpage-msg-wrapper ${msg.role}`}>
-                {msg.role === 'assistant' && (msg.thinking || liveThinking) && (
-                  <details className="askpage-thinking-block" open={liveThinking ? thinkingExpanded : undefined}>
-                    <summary
-                      className="askpage-thinking-summary"
-                      onClick={
-                        liveThinking
-                          ? e => {
-                              e.preventDefault();
-                              setThinkingExpanded(!thinkingExpanded);
-                            }
-                          : undefined
-                      }
-                    >
-                      {liveThinking ? 'Thinking…' : 'Thinking process'}
-                    </summary>
+              <div key={i} className="askpage-m ai">
+                <svg className="askpage-av" viewBox="0 0 24 24" fill="none" stroke="none">
+                  <rect width="24" height="24" rx="7" fill="currentColor" stroke="none" />
+                  <path
+                    d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z"
+                    fill="#fff"
+                    stroke="none"
+                  />
+                  <circle cx="10" cy="11" r="1.1" fill="currentColor" stroke="none" />
+                  <circle cx="14" cy="11" r="1.1" fill="currentColor" stroke="none" />
+                </svg>
+                <div className="askpage-ans">
+                  {hasThinking && (
+                    <details className="askpage-thinking-block" open={showLiveThinking ? thinkingExpanded : undefined}>
+                      <summary
+                        className="askpage-thinking-summary"
+                        onClick={
+                          showLiveThinking
+                            ? e => {
+                                e.preventDefault();
+                                setThinkingExpanded(!thinkingExpanded);
+                              }
+                            : undefined
+                        }
+                      >
+                        {showLiveThinking ? 'Thinking…' : 'Thinking process'}
+                      </summary>
+                      <div
+                        className="askpage-thinking-content"
+                        dangerouslySetInnerHTML={{
+                          __html: renderMarkdown((showLiveThinking ? thinkingContent : msg.thinking) as string),
+                        }}
+                      />
+                    </details>
+                  )}
+                  {hasContent ? (
                     <div
-                      className="askpage-thinking-content"
-                      dangerouslySetInnerHTML={{
-                        __html: renderMarkdown((liveThinking ? thinkingContent : msg.thinking) as string),
-                      }}
+                      className="askpage-b"
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
                     />
-                  </details>
-                )}
-                <div
-                  className={`askpage-msg ${msg.role}`}
-                  {...(msg.role === 'assistant'
-                    ? {
-                        dangerouslySetInnerHTML: {
-                          __html: renderMarkdown(msg.content) || '<span style="opacity:0.3">Thinking…</span>',
-                        },
-                      }
-                    : {})}
-                >
-                  {msg.role !== 'assistant' ? msg.content : undefined}
+                  ) : isCurrentlyStreaming ? (
+                    <div className="askpage-b askpage-dots">
+                      <svg className="askpage-scr" viewBox="0 0 64 16">
+                        <path pathLength={1} d="M2 8q5-12 10 0t10 0 10 0 10 0 10 0 10 0" />
+                      </svg>
+                      <span>Thinking…</span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );
           })
         )}
-        {isStreaming && !thinkingContent && messages[messages.length - 1]?.content === '' && (
-          <div className="askpage-typing">
-            <svg className="askpage-typing-wave" viewBox="0 0 64 16">
-              <path pathLength="1" d="M2 8q5-12 10 0t10 0 10 0 10 0 10 0 10 0" />
-            </svg>
-            <span>Thinking…</span>
-          </div>
-        )}
       </div>
 
-      {/* Input */}
-      <div className="askpage-input-area" style={{ padding: '10px 16px 14px' }}>
-        <div
-          className="askpage-input-wrapper"
-          style={{ opacity: !capturedData && messages.length === 0 ? 0.7 : 1 }}
-        >
+      {/* ─── Footer Composer ─── */}
+      <div className="askpage-footer">
+        <div className="askpage-cmp">
           <textarea
             ref={inputRef}
             className="askpage-input"
-            style={{ resize: 'none' }}
             value={input}
             onChange={e => {
               setInput(e.target.value);
@@ -317,38 +413,57 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
               e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
             }}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about the captured DevTools data…"
+            placeholder="Ask about this page or DevTools data…"
             rows={1}
             disabled={isStreaming}
           />
-        </div>
-        {isStreaming ? (
-          <button className="askpage-send-btn" onClick={abortStream} title="Stop">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="5" y="5" width="14" height="14" rx="2" />
-            </svg>
-          </button>
-        ) : (
-          <button
-            className="askpage-send-btn"
-            onClick={sendMessage}
-            disabled={!input.trim()}
-            title="Send"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          <div className="askpage-row">
+            <button
+              type="button"
+              className={`askpage-att ${capturedData ? 'active' : ''}`}
+              onClick={onCapture}
+              title={capturedData ? 'Refresh captured DevTools context' : 'Capture DevTools context'}
             >
-              <path d="M12 19V5M5 12l7-7 7 7" />
-            </svg>
-          </button>
-        )}
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+              <span>{isCapturing ? 'Capturing…' : capturedData ? 'DevTools Context Attached' : 'Capture Context'}</span>
+            </button>
+
+            {isStreaming ? (
+              <button className="askpage-send" onClick={abortStream} title="Stop generation">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="5" y="5" width="14" height="14" rx="2" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                className="askpage-send"
+                onClick={() => sendMessage()}
+                disabled={!input.trim()}
+                title="Send message"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 19V5M5 12l7-7 7 7" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

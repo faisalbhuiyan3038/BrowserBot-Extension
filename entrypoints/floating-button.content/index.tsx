@@ -131,7 +131,8 @@ export default defineContentScript({
 
           const wrapper = document.createElement('div');
           wrapper.id = 'browserbot-floating-btn';
-          wrapper.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+          const iconUrl = browser.runtime.getURL('/icon-alt.png' as any);
+          wrapper.innerHTML = `<img src="${iconUrl}" alt="BrowserBot" style="width: 24px; height: 24px; object-fit: contain; display: block; pointer-events: none;" />`;
           if (isPanelOpen || Boolean(document.querySelector('browserbot-ask-page'))) {
             isPanelOpen = true;
             wrapper.classList.add('panel-open');

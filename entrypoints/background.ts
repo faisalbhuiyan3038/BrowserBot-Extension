@@ -285,7 +285,11 @@ export default defineBackground(() => {
   // ─── Stream chat to content script ────────────────────────
   async function handleAskPageChat(message: any, sender: any) {
     const tabId = sender.tab?.id;
-    const isExtensionPage = sender.url?.startsWith('chrome-extension://') || sender.url?.startsWith('moz-extension://');
+    const isExtensionPage = !tabId || Boolean(
+      sender.url?.startsWith('chrome-extension://') ||
+      sender.url?.startsWith('moz-extension://') ||
+      sender.id === browser.runtime.id
+    );
     if (!tabId && !isExtensionPage) return;
 
     const messages: ChatMessage[] = message.messages;

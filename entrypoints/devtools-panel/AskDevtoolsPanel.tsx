@@ -8,6 +8,8 @@ import { inferInitiator } from './types';
 
 marked.setOptions({ breaks: true, gfm: true });
 
+const MARKDOWN_FORMAT_INSTRUCTION = '\n\nIMPORTANT: Always format your responses using markdown. Use headings, bullet points, code blocks, bold, italic, and other markdown features to make your responses well-structured and readable.';
+
 export default function AskDevtoolsPanel() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
@@ -102,16 +104,19 @@ export default function AskDevtoolsPanel() {
         setThinkingExpanded(true);
       } else if (message.type === 'ASK_PAGE_CHAT_DONE') {
         const savedThinking = streamingThinkingRef.current;
-        if (savedThinking) {
-          setMessages(prev => {
-            const updated = [...prev];
-            const lastIdx = updated.length - 1;
-            if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
-              updated[lastIdx] = { ...updated[lastIdx], thinking: savedThinking };
-            }
-            return updated;
-          });
-        }
+        const finalContent = streamingContentRef.current;
+        setMessages(prev => {
+          const updated = [...prev];
+          const lastIdx = updated.length - 1;
+          if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
+            updated[lastIdx] = {
+              ...updated[lastIdx],
+              content: finalContent || updated[lastIdx].content,
+              thinking: savedThinking || updated[lastIdx].thinking
+            };
+          }
+          return updated;
+        });
         setIsStreaming(false);
         setThinkingExpanded(false);
         streamingContentRef.current = '';
@@ -127,7 +132,7 @@ export default function AskDevtoolsPanel() {
           const updated = (lastIdx >= 0 && prev[lastIdx].role === 'assistant' && !prev[lastIdx].content)
             ? prev.slice(0, lastIdx)
             : prev;
-          return [...updated, { role: 'error', content: message.error }];
+          return [...updated, { role: 'error', content: message.error || 'Failed to generate response' }];
         });
       }
     };
@@ -475,14 +480,23 @@ export default function AskDevtoolsPanel() {
                   } else {
                 try {
                    const body = await new Promise<string>((resolve) => {
+                     const timer = setTimeout(() => resolve(''), 600);
                      try {
-                       const result = rawEntry.getContent((content: string) => resolve(content || ''));
+                       const onDone = (content: string) => {
+                         clearTimeout(timer);
+                         resolve(content || '');
+                       };
+                       const result = rawEntry.getContent(onDone);
                        if (result && typeof result.then === 'function') {
                          result.then((res: any) => {
+                           clearTimeout(timer);
                            if (Array.isArray(res)) resolve(res[0] || '');
                            else if (res && typeof res === 'object' && res.content) resolve(res.content || '');
                            else resolve((res as string) || '');
-                         }).catch(() => resolve(''));
+                         }).catch(() => {
+                           clearTimeout(timer);
+                           resolve('');
+                         });
                        }
                      } catch(err) {
                        try {
@@ -492,18 +506,27 @@ export default function AskDevtoolsPanel() {
                            const match = requestCacheRef.current.find(r => r.request.url === rawEntry.request.url && r.request.method === rawEntry.request.method);
                            if (match) targetEntry = match;
                          }
-                         const result = targetEntry.getContent();
+                         const result = targetEntry.getContent((c: string) => {
+                           clearTimeout(timer);
+                           resolve(c || '');
+                         });
                          if (result && typeof result.then === 'function') {
                            result.then((res: any) => {
+                             clearTimeout(timer);
                              if (Array.isArray(res)) resolve(res[0] || '');
                              else if (res && typeof res === 'object' && res.content) resolve(res.content || '');
                              else resolve((res as string) || '');
-                           }).catch(() => resolve(''));
-                         } else {
-                           resolve('[Unavailable: In Firefox, you must open this panel before the page loads to capture response bodies]');
+                           }).catch(() => {
+                             clearTimeout(timer);
+                             resolve('');
+                           });
+                         } else if (!result) {
+                           clearTimeout(timer);
+                           resolve('');
                          }
                        } catch (e) {
-                         resolve('[Unavailable: In Firefox, you must open this panel before the page loads to capture response bodies]');
+                         clearTimeout(timer);
+                         resolve('');
                        }
                      }
                    });
@@ -544,6 +567,8 @@ export default function AskDevtoolsPanel() {
       prompt += '\n';
     }
 
+    prompt += MARKDOWN_FORMAT_INSTRUCTION;
+
     return prompt;
   };
 
@@ -556,22 +581,33 @@ export default function AskDevtoolsPanel() {
     });
   };
 
-  const sendMessage = async () => {
-    const text = input.trim();
+  const sendMessage = async (textOverride?: string) => {
+    const text = (textOverride !== undefined ? textOverride : input).trim();
     if (isStreaming || !text) return;
 
-    let chatMessages: any[] = messages;
-    if (!chatMessages.some(m => m.role === 'system')) {
-      const systemPrompt = await buildSystemPrompt();
-      chatMessages = [{ role: 'system', content: systemPrompt }, ...chatMessages];
-    }
-    
-    chatMessages = [
-        ...chatMessages.filter(m => m.role !== 'error'),
-        { role: 'user', content: text }
-    ];
+    const newSessionId = generateUUID();
+    sessionIdRef.current = newSessionId;
 
-    setMessages(prev => [...prev, { role: 'user', content: text }, { role: 'assistant', content: '' }]);
+    const sysPrompt = await buildSystemPrompt();
+    const chatMessages: any[] = [
+      { role: 'system', content: sysPrompt }
+    ];
+    for (const m of messages) {
+      if (m.role === 'error') continue;
+      if (m.role === 'assistant') {
+        const c = m.content || (m.thinking ? `[Thinking process: ${m.thinking}]` : '');
+        if (c) chatMessages.push({ role: 'assistant', content: c });
+      } else {
+        chatMessages.push({ role: m.role, content: m.content });
+      }
+    }
+    chatMessages.push({ role: 'user', content: text });
+
+    setMessages(prev => [
+      ...prev.filter(m => m.role !== 'error'),
+      { role: 'user', content: text },
+      { role: 'assistant', content: '' }
+    ]);
     setInput('');
     setIsStreaming(true);
     streamingContentRef.current = '';
@@ -585,8 +621,22 @@ export default function AskDevtoolsPanel() {
       messages: chatMessages,
       providerType,
       openaiProviderId: selectedOpenAIId,
-      sessionId: sessionIdRef.current
+      sessionId: newSessionId
     });
+  };
+
+  const handleRetry = () => {
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+    if (!lastUserMsg) return;
+    setMessages(prev => prev.filter(m => m.role !== 'error'));
+    sendMessage(lastUserMsg.content);
+  };
+
+  const handleSelectWelcomePrompt = async (promptText: string) => {
+    if (!capturedData) {
+      await captureDevToolsData();
+    }
+    sendMessage(promptText);
   };
 
   const renderMarkdown = (content: string) => {
@@ -598,7 +648,8 @@ export default function AskDevtoolsPanel() {
     } catch { return content; }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    e.stopPropagation();
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
@@ -606,10 +657,12 @@ export default function AskDevtoolsPanel() {
   };
 
   const abortStream = () => {
-    browser.runtime.sendMessage({
-      type: 'ASK_PAGE_CHAT_ABORT',
-      sessionId: sessionIdRef.current
-    }).catch(() => {});
+    if (sessionIdRef.current) {
+      browser.runtime.sendMessage({
+        type: 'ASK_PAGE_CHAT_ABORT',
+        sessionId: sessionIdRef.current
+      }).catch(() => {});
+    }
     setIsStreaming(false);
   };
   
@@ -684,8 +737,12 @@ export default function AskDevtoolsPanel() {
         setInput={setInput}
         handleKeyDown={handleKeyDown}
         capturedData={capturedData}
+        isCapturing={isCapturing}
+        onCapture={captureDevToolsData}
         abortStream={abortStream}
         sendMessage={sendMessage}
+        onRetry={handleRetry}
+        onSelectWelcomePrompt={handleSelectWelcomePrompt}
       />
     </div>
   );
