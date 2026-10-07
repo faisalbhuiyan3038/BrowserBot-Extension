@@ -7,6 +7,7 @@ import {
   BOOKMARK_ORGANIZE_VARIABLES, DEFAULT_DEVTOOLS_SYSTEM_PROMPT,
   DEFAULT_BOOKMARK_ORGANIZE_PROMPT, generateUUID
 } from '../../utils/storage';
+import { getStoredTheme, setStoredTheme, applyTheme, onThemeChange, type Theme } from '../../utils/theme';
 
 type Page = 'providers' | 'tab-grouping' | 'ask-page' | 'ask-devtools' | 'bookmarks';
 
@@ -34,6 +35,21 @@ export default function App() {
   // Ollama state
   const [ollamaModels, setOllamaModels] = useState<{name: string}[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
+
+  // Theme state
+  const [theme, setTheme] = useState<Theme>('light');
+
+  useEffect(() => {
+    getStoredTheme().then(setTheme);
+    return onThemeChange(setTheme);
+  }, []);
+
+  const handleToggleTheme = async () => {
+    const next: Theme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    applyTheme(next);
+    await setStoredTheme(next);
+  };
 
   useEffect(() => {
     AppStorage.get().then(data => {
@@ -233,6 +249,19 @@ export default function App() {
           </div>
           <span><b>BrowserBot</b></span>
         </div>
+        <button
+          type="button"
+          className="mobile-theme-btn"
+          onClick={handleToggleTheme}
+          title={theme === 'dark' ? 'Switch to Light mode' : 'Switch to Dark mode'}
+          aria-label="Toggle theme"
+        >
+          {theme === 'dark' ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          )}
+        </button>
       </div>
 
       {/* ═══ Sidebar / Mobile Drawer ═══ */}
@@ -288,17 +317,46 @@ export default function App() {
           </button>
         </nav>
 
-        {/* ─── Import/Export Buttons ─── */}
+        {/* ─── Sidebar Footer (Theme Toggle & Import/Export) ─── */}
         <div className="sidebar-footer">
-          <input ref={fileInputRef} type="file" accept=".json" onChange={handleImport} style={{ display: 'none' }} />
-          <button className="sidebar-footer-btn" onClick={handleExport} title="Export all settings and conversations">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-            Export
-          </button>
-          <button className="sidebar-footer-btn" onClick={() => fileInputRef.current?.click()} title="Import settings and conversations from file">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-            Import
-          </button>
+          <div className="theme-toggle-row">
+            <button
+              type="button"
+              className="theme-toggle-btn"
+              onClick={handleToggleTheme}
+              title={theme === 'dark' ? 'Switch to Light mode' : 'Switch to Dark mode'}
+              aria-label="Toggle light and dark theme"
+            >
+              <span className="theme-toggle-label">
+                {theme === 'dark' ? (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                ) : (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                )}
+                <span>Theme: <b>{theme === 'dark' ? 'Dark' : 'Light'}</b></span>
+              </span>
+              <span className={`theme-toggle-switch ${theme === 'dark' ? 'is-dark' : 'is-light'}`}>
+                <span className="theme-toggle-thumb">
+                  {theme === 'dark' ? (
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                  ) : (
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"/></svg>
+                  )}
+                </span>
+              </span>
+            </button>
+          </div>
+          <div className="sidebar-footer-actions">
+            <input ref={fileInputRef} type="file" accept=".json" onChange={handleImport} style={{ display: 'none' }} />
+            <button className="sidebar-footer-btn" onClick={handleExport} title="Export all settings and conversations">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+              Export
+            </button>
+            <button className="sidebar-footer-btn" onClick={() => fileInputRef.current?.click()} title="Import settings and conversations from file">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+              Import
+            </button>
+          </div>
         </div>
       </aside>
 

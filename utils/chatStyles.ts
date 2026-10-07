@@ -157,7 +157,7 @@ ${fonts}
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-:host {
+:host, :root, body {
   --hb: #fff;
   --hfg: #1c1c20;
   --hm: #62626b;
@@ -197,7 +197,7 @@ ${fonts}
   color: var(--fg);
 }
 
-:host([data-theme=dark]), [data-theme=dark] {
+:host([data-theme=dark]), :root[data-theme=dark], body[data-theme=dark], [data-theme=dark] {
   --hb: #18181b;
   --hfg: #e6e6ea;
   --hm: #9d9da6;
@@ -291,9 +291,8 @@ textarea:focus-visible { outline: 0; }
   to { opacity: 0; transform: translateY(16px) rotate(1deg) scale(0.96); }
 }
 .askpage-panel svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.askpage-panel .askpage-logo { width: 22px; height: 22px; color: var(--ac); transform: rotate(-8deg); flex: none; }
-.askpage-panel .askpage-welcome-logo,
-.askpage-panel .askpage-welcome .askpage-logo { width: 36px; height: 36px; color: var(--ac); transform: rotate(-8deg); flex: none; }
+.askpage-logo, .askpage-panel .askpage-logo { width: 22px; height: 22px; color: var(--ac); transform: rotate(-8deg); flex: none; object-fit: contain; display: block; }
+.askpage-welcome-logo, .askpage-panel .askpage-welcome-logo, .askpage-panel .askpage-welcome .askpage-logo { width: 36px; height: 36px; color: var(--ac); transform: rotate(-8deg); flex: none; object-fit: contain; display: block; }
 .askpage-panel .askpage-av { width: 24px; height: 24px; flex: none; color: var(--ac); margin-top: 2px; transform: rotate(-6deg); }
 .askpage-panel .askpage-scr { width: 56px; height: 16px; stroke: var(--ac); stroke-width: 2.2; fill: none; flex: none; }
 .askpage-panel .askpage-welcome-pick svg { width: 34px; height: 26px; stroke-width: 2; flex: none; }
@@ -632,12 +631,18 @@ textarea:focus-visible { outline: 0; }
 .askpage-slash {
   position: absolute; left: 0; right: 0; bottom: calc(100% + 8px);
   background: var(--pbg);
-  border: 1.5px solid var(--bd);
+  border: 0; position: relative;
   border-radius: 14px 10px 16px 10px / 10px 16px 10px 14px;
   box-shadow: 4px 4px 0 var(--bd);
   max-height: 280px; overflow-y: auto; z-index: 40;
   padding: 6px; scrollbar-width: thin;
   animation: pop .18s ease both;
+}
+.askpage-slash::before {
+  content: ""; position: absolute; inset: 0;
+  border: 1.5px solid var(--bd); border-radius: inherit;
+  filter: url(#rough); pointer-events: none;
+  transition: border-color .15s;
 }
 .askpage-slash-head {
   display: flex; justify-content: space-between; align-items: center;
@@ -767,14 +772,13 @@ textarea:focus-visible { outline: 0; }
 
 /* Floating button */
 #browserbot-floating-btn {
-  position: fixed; right: 14px; bottom: 80px; width: 40px; height: 40px;
-  border-radius: 14px 10px 14px 10px / 10px 14px 10px 14px;
-  background: var(--ac); border: 2px solid var(--bd); box-shadow: 3px 3px 0 var(--bd);
+  position: fixed; right: 14px; bottom: 80px; width: 24px; height: 24px;
+  padding: 0; background: transparent; border: none; box-shadow: none;
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; z-index: 2147483645;
   transition: transform .35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity .25s ease, filter .15s;
 }
-#browserbot-floating-btn:hover:not(.panel-open) { transform: scale(1.08) rotate(-4deg); }
+#browserbot-floating-btn:hover:not(.panel-open) { transform: scale(1.12) rotate(-4deg); }
 #browserbot-floating-btn svg { width: 20px; height: 20px; color: var(--acfg); }
 #browserbot-floating-btn img { width: 24px; height: 24px; object-fit: contain; pointer-events: none; display: block; }
 

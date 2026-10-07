@@ -752,12 +752,112 @@ textarea {
 
 /* ─── Sidebar Footer (Import/Export) ─────────────── */
 
+/* ─── Sidebar Footer (Theme Toggle & Import/Export) ─── */
 .sidebar-footer {
   margin-top: auto;
   display: flex;
-  gap: 6px;
-  padding-top: 12px;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
   border-top: 1.5px solid var(--bd);
+}
+
+.theme-toggle-row {
+  width: 100%;
+}
+
+.theme-toggle-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 11px;
+  background: var(--pbg);
+  border: 1.5px solid var(--bd);
+  border-radius: 14px 10px 16px 10px / 10px 16px 10px 14px;
+  box-shadow: 2px 2px 0 var(--bd);
+  color: var(--fg);
+  font: 700 17px/1 var(--hfont);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.theme-toggle-btn::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border: 1.5px solid var(--bd);
+  border-radius: inherit;
+  filter: url(#rough);
+  pointer-events: none;
+  transition: border-color 0.15s;
+}
+
+.theme-toggle-btn:hover {
+  background: var(--acs);
+  color: var(--act);
+  transform: translateY(-1px);
+  box-shadow: 3px 3px 0 var(--bd);
+}
+
+.theme-toggle-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: none;
+}
+
+.theme-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font: 700 17px/1 var(--hfont);
+}
+
+.theme-toggle-label b {
+  color: var(--act);
+}
+
+.theme-toggle-switch {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  background: var(--sub);
+  border: 1.5px solid var(--bd);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.theme-toggle-switch.is-dark {
+  background: var(--acs);
+  border-color: var(--ac);
+}
+
+.theme-toggle-thumb {
+  width: 16px;
+  height: 16px;
+  background: var(--ac);
+  color: var(--acfg);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateX(0);
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s;
+  box-shadow: 1px 1px 0 var(--bd);
+}
+
+.theme-toggle-switch.is-dark .theme-toggle-thumb {
+  transform: translateX(18px);
+  background: var(--ub);
+  color: var(--ubf);
+}
+
+.sidebar-footer-actions {
+  display: flex;
+  gap: 6px;
 }
 
 .sidebar-footer-btn {
@@ -784,6 +884,33 @@ textarea {
 }
 
 .sidebar-footer-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: none;
+}
+
+.mobile-theme-btn {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: var(--sub);
+  border: 1.5px solid var(--bd);
+  border-radius: var(--rs);
+  color: var(--fg);
+  cursor: pointer;
+  box-shadow: 1.5px 1.5px 0 var(--bd);
+  transition: all 0.15s;
+}
+
+.mobile-theme-btn:hover {
+  background: var(--acs);
+  color: var(--act);
+  transform: translateY(-1px);
+}
+
+.mobile-theme-btn:active {
   transform: translate(1px, 1px);
   box-shadow: none;
 }

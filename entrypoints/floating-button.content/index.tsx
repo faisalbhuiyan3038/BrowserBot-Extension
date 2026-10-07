@@ -1,4 +1,5 @@
 import { getStyles, getRoughFilterSVG } from '../../utils/chatStyles';
+import { getStoredTheme, onThemeChange } from '../../utils/theme';
 
 interface FloatingBtnPos {
   left: number;
@@ -110,9 +111,13 @@ export default defineContentScript({
 
     if (!enabled) return;
 
+    let unlistenTheme: (() => void) | null = null;
+
     async function mountUI() {
       if (uiMounted) return;
       uiMounted = true;
+
+      const initialTheme = await getStoredTheme();
 
       const ui = await createShadowRootUi(ctx, {
         name: 'browserbot-floating-button',
@@ -129,8 +134,12 @@ export default defineContentScript({
           filterContainer.innerHTML = getRoughFilterSVG();
           shadowRoot.appendChild(filterContainer);
 
+          ui.uiContainer.setAttribute('data-theme', initialTheme);
+          container.setAttribute('data-theme', initialTheme);
+
           const wrapper = document.createElement('div');
           wrapper.id = 'browserbot-floating-btn';
+          wrapper.setAttribute('data-theme', initialTheme);
           const iconUrl = browser.runtime.getURL('/icon-alt.png' as any);
           wrapper.innerHTML = `<img src="${iconUrl}" alt="BrowserBot" style="width: 24px; height: 24px; object-fit: contain; display: block; pointer-events: none;" />`;
           if (isPanelOpen || Boolean(document.querySelector('browserbot-ask-page'))) {
@@ -138,6 +147,12 @@ export default defineContentScript({
             wrapper.classList.add('panel-open');
           }
           container.appendChild(wrapper);
+
+          unlistenTheme = onThemeChange((nextTheme) => {
+            ui.uiContainer.setAttribute('data-theme', nextTheme);
+            container.setAttribute('data-theme', nextTheme);
+            wrapper.setAttribute('data-theme', nextTheme);
+          });
 
           floatingButton = wrapper;
           setupButtonBehavior(wrapper);
@@ -151,6 +166,10 @@ export default defineContentScript({
     }
 
     function removeUI() {
+      if (unlistenTheme) {
+        unlistenTheme();
+        unlistenTheme = null;
+      }
       if (btnCleanup) {
         btnCleanup();
         btnCleanup = null;

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { ChatMsg, SystemPrompt } from '../../../utils/storage';
+import iconUrl from '../../../assets/icon-alt.png';
 
 const THINKING_MESSAGES = [
   'Skimming the page…',
@@ -57,12 +58,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     <div className="askpage-messages" ref={messagesContainerRef} onScroll={onScroll}>
       {messages.length === 0 ? (
         <div className="askpage-welcome">
-          <svg className="askpage-welcome-logo askpage-logo" viewBox="0 0 24 24" fill="none" stroke="none">
-            <rect width="24" height="24" rx="7" fill="currentColor" stroke="none" />
-            <path d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z" fill="#fff" stroke="none" />
-            <circle cx="10" cy="11" r="1.1" fill="currentColor" stroke="none" />
-            <circle cx="14" cy="11" r="1.1" fill="currentColor" stroke="none" />
-          </svg>
+          <img src={iconUrl} className="askpage-welcome-logo askpage-logo" alt="BrowserBot" />
           <h2>Hi, I'm BrowserBot</h2>
           <p>I can read this page and your selection. Ask me anything about it.</p>
           <span className="askpage-welcome-pick">

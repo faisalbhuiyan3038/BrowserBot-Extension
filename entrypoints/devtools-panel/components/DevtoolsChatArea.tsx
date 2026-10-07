@@ -1,6 +1,10 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { ChatMsg, Conversation, AIProviderType, OpenAIProvider } from '../../../utils/storage';
+import { AppStorage } from '../../../utils/storage';
 import type { DevToolsData } from '../types';
+import iconUrl from '../../../assets/icon-alt.png';
+import { SlashMenu } from '../../ask-page.content/components/SlashMenu';
+import type { SlashMode, SlashOption } from '../../ask-page.content/types';
 
 interface DevtoolsChatAreaProps {
   showHistory: boolean;
@@ -84,8 +88,241 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
   onRetry,
   onSelectWelcomePrompt,
 }) => {
+  // Slash commands state (/model, /prompt)
+  const [slashOpen, setSlashOpen] = useState(false);
+  const [slashMode, setSlashMode] = useState<SlashMode>('root');
+  const [slashQuery, setSlashQuery] = useState('');
+  const [slashIndex, setSlashIndex] = useState(0);
+  const slashMenuRef = useRef<HTMLDivElement>(null);
+
+  const getCurrentModelLabel = () => {
+    if (providerType === 'chrome_ai') return 'Chrome AI (Built-in Nano)';
+    if (providerType === 'ollama') return `Ollama (${ollamaModel || 'default'})`;
+    const p = openaiProviders.find(x => x.id === selectedOpenAIId);
+    return p ? `${p.name} (${p.model})` : 'OpenAI-compatible';
+  };
+
+  const getCurrentModelShort = () => {
+    if (providerType === 'chrome_ai') return 'Chrome AI';
+    if (providerType === 'ollama') return ollamaModel || 'Ollama';
+    const p = openaiProviders.find(x => x.id === selectedOpenAIId);
+    return p ? (p.name || p.model) : 'OpenAI';
+  };
+
+  const getSlashOptions = (): SlashOption[] => {
+    const q = slashQuery.toLowerCase();
+    const match = (s: string) => !q || s.toLowerCase().includes(q);
+
+    if (slashMode === 'model') {
+      const opts: SlashOption[] = [
+        ...openaiProviders.map(p => ({
+          key: `openai:${p.id}`,
+          title: p.name,
+          desc: p.model,
+          hint: 'OpenAI-compatible',
+          active: providerType === 'openai' && selectedOpenAIId === p.id,
+        })),
+        {
+          key: 'ollama',
+          title: 'Ollama',
+          desc: ollamaModel || 'local model',
+          hint: 'Local',
+          active: providerType === 'ollama',
+        },
+        {
+          key: 'chrome_ai',
+          title: 'Chrome AI',
+          desc: 'Built-in Gemini Nano',
+          hint: 'On-device',
+          active: providerType === 'chrome_ai',
+        },
+      ];
+      return opts.filter(o => match(o.title) || match(o.desc));
+    }
+
+    if (slashMode === 'prompt') {
+      const promptList = [
+        { key: 'network', title: 'Network Errors', desc: 'What network requests failed or are taking over 1s?' },
+        { key: 'console', title: 'Console Errors', desc: 'Explain the recent console errors and how to fix them' },
+        { key: 'dom', title: 'Analyze DOM ($0)', desc: 'Analyze the selected DOM element ($0) and recommend optimizations' },
+        { key: 'perf', title: 'Performance Audit', desc: 'Audit page load timing, paint metrics, and memory usage' },
+      ];
+      return promptList.filter(o => match(o.title) || match(o.desc));
+    }
+
+    // root
+    const root: SlashOption[] = [
+      { key: 'model', title: '/model', desc: 'Switch AI model', hint: getCurrentModelShort() },
+      { key: 'prompt', title: '/prompt', desc: 'Insert DevTools prompt', hint: '4 prompts' },
+    ];
+    return root.filter(o => match(o.title) || match(o.desc));
+  };
+
+  const slashOptions = getSlashOptions();
+
+  const closeSlash = () => {
+    setSlashOpen(false);
+    setSlashMode('root');
+    setSlashQuery('');
+    setSlashIndex(0);
+  };
+
+  const openSlash = (mode: SlashMode = 'root') => {
+    setSlashMode(mode);
+    setSlashQuery('');
+    setSlashIndex(0);
+    setSlashOpen(true);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  const replaceSlashToken = (replacement: string) => {
+    const ta = inputRef.current;
+    const cursor = ta?.selectionStart ?? input.length;
+    const before = input.slice(0, cursor);
+    const after = input.slice(cursor);
+    const m = /(^|\s)\/(\w*)$/.exec(before);
+    let next: string;
+    if (m) {
+      const tokenStart = m.index + m[1].length;
+      next = before.slice(0, tokenStart) + replacement + after;
+    } else {
+      next = replacement + input;
+    }
+    setInput(next);
+    requestAnimationFrame(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        const pos = m ? (m.index + m[1].length + replacement.length) : replacement.length;
+        try { inputRef.current.setSelectionRange(pos, pos); } catch {}
+        inputRef.current.style.height = 'auto';
+        inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 120) + 'px';
+      }
+    });
+  };
+
+  const selectModelOption = (key: string) => {
+    if (key.startsWith('openai:')) {
+      const newId = key.replace('openai:', '');
+      setProviderType('openai');
+      setSelectedOpenAIId(newId);
+      AppStorage.set({ activeProvider: 'openai', activeOpenAIProviderId: newId }).catch(() => {});
+    } else if (key === 'ollama' || key === 'chrome_ai') {
+      setProviderType(key as AIProviderType);
+      AppStorage.set({ activeProvider: key as AIProviderType }).catch(() => {});
+    }
+    replaceSlashToken('');
+    closeSlash();
+  };
+
+  const selectPromptOption = (key: string) => {
+    const promptMap: Record<string, string> = {
+      network: 'What network requests failed or are taking over 1s?',
+      console: 'Explain the recent console errors and how to fix them',
+      dom: 'Analyze the selected DOM element ($0) and recommend optimizations',
+      perf: 'Audit page load timing, paint metrics, and memory usage',
+    };
+    const text = promptMap[key] || '';
+    if (text) {
+      replaceSlashToken(text + ' ');
+    }
+    closeSlash();
+  };
+
+  const selectSlashOption = (opt: SlashOption) => {
+    if (slashMode === 'root') {
+      if (opt.key === 'model' || opt.key === 'prompt') {
+        setSlashMode(opt.key as SlashMode);
+        setSlashQuery('');
+        setSlashIndex(0);
+        return;
+      }
+    }
+    if (slashMode === 'model') { selectModelOption(opt.key); return; }
+    if (slashMode === 'prompt') { selectPromptOption(opt.key); return; }
+  };
+
+  const detectSlash = (value: string, cursorPos: number) => {
+    const before = value.slice(0, cursorPos);
+    if (slashOpen && slashMode !== 'root') {
+      const mSub = /(?:^|\s)\/?(\w*)$/.exec(before);
+      const nextQ = mSub ? (mSub[1] || '') : '';
+      if (nextQ !== slashQuery) setSlashQuery(nextQ);
+      return;
+    }
+    const m = /(^|\s)\/(\w*)$/.exec(before);
+    if (m) {
+      const nextQ = m[2] || '';
+      if (!slashOpen) {
+        setSlashMode('root');
+        setSlashQuery(nextQ);
+        setSlashOpen(true);
+        setSlashIndex(0);
+      } else if (nextQ !== slashQuery) {
+        setSlashQuery(nextQ);
+      }
+    } else if (slashOpen && slashMode === 'root') {
+      setSlashOpen(false);
+      setSlashQuery('');
+      setSlashIndex(0);
+    }
+  };
+
+  // Keyboard navigation for slash commands and message sending
+  const onTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    e.stopPropagation();
+    if (slashOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSlashIndex(prev => (slashOptions.length ? (prev + 1) % slashOptions.length : 0));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSlashIndex(prev => (slashOptions.length ? (prev - 1 + slashOptions.length) % slashOptions.length : 0));
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        if (slashOptions.length > 0) {
+          e.preventDefault();
+          selectSlashOption(slashOptions[Math.min(slashIndex, slashOptions.length - 1)]);
+          return;
+        }
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (slashMode !== 'root') {
+          setSlashMode('root');
+          setSlashQuery('');
+          setSlashIndex(0);
+        } else {
+          closeSlash();
+        }
+        return;
+      }
+    }
+
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      closeSlash();
+      sendMessage();
+      return;
+    }
+
+    handleKeyDown(e);
+  };
+
+  useEffect(() => {
+    if (slashIndex >= slashOptions.length) setSlashIndex(0);
+  }, [slashOptions.length]);
+
+  useEffect(() => {
+    if (!slashOpen) return;
+    slashMenuRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
+  }, [slashIndex, slashOpen]);
+
   return (
     <div
+      className="askpage-panel"
       style={{
         flex: 1,
         display: 'flex',
@@ -94,6 +331,12 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
         background: 'var(--pbg)',
         color: 'var(--fg)',
         overflow: 'hidden',
+        width: 'auto',
+        maxWidth: 'none',
+        height: '100%',
+        borderRadius: 0,
+        border: 'none',
+        boxShadow: 'none',
       }}
     >
       {/* ─── History Drawer ─── */}
@@ -138,14 +381,13 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
                   className={`askpage-history-item ${activeConversationId === conv.id ? 'active' : ''}`}
                 >
                   <button className="askpage-history-item-main" onClick={() => loadConversation(conv)}>
-                    <div className="askpage-history-item-title">{conv.title.replace('[DevTools] ', '')}</div>
-                    <div className="askpage-history-item-meta">
-                      {new Date(conv.updatedAt).toLocaleDateString()} ·{' '}
-                      {conv.messages.filter(m => m.role === 'user').length} msgs
-                    </div>
+                    <span className="askpage-history-item-title">{conv.title || 'Untitled'}</span>
+                    <span className="askpage-history-item-date">
+                      {new Date(conv.updatedAt || conv.createdAt).toLocaleDateString()}
+                    </span>
                   </button>
                   <button
-                    className="askpage-history-item-delete"
+                    className="askpage-history-item-del"
                     onClick={e => {
                       e.stopPropagation();
                       deleteConversation(conv.id);
@@ -156,20 +398,30 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
                   </button>
                 </div>
               ))}
-            {conversations.length === 0 && <div className="askpage-history-empty">No DevTools chats yet</div>}
+            {conversations.length === 0 && (
+              <div style={{ padding: '16px', fontSize: 13, color: 'var(--mute)', textAlign: 'center' }}>
+                No saved chats yet
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* ─── Header ─── */}
-      <div
-        className="askpage-header"
-        style={{
-          borderBottom: '1.5px solid var(--bd)',
-          padding: '10px 14px',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      {/* ─── Header matching Ask Page ─── */}
+      <div className="askpage-header">
+        <div className="askpage-brand">
+          <img
+            src={iconUrl}
+            alt="BrowserBot"
+            className="askpage-logo"
+            style={{ width: 22, height: 22, objectFit: 'contain' }}
+          />
+          <span className="askpage-header-title">
+            <b>BrowserBot Debugger</b>
+          </span>
+        </div>
+
+        <div className="askpage-acts">
           <button
             className={`askpage-header-btn ${showHistory ? 'active' : ''}`}
             onClick={() => {
@@ -177,100 +429,27 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
               if (!showHistory) loadConversations();
             }}
             title="Chat History"
+            aria-label="Chat history"
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5M12 16h.01" /></svg>
           </button>
-          <div className="askpage-brand">
-            <svg className="askpage-logo" viewBox="0 0 24 24" fill="none" stroke="none">
-              <rect width="24" height="24" rx="7" fill="currentColor" stroke="none" />
-              <path
-                d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z"
-                fill="#fff"
-                stroke="none"
-              />
-              <circle cx="10" cy="11" r="1.1" fill="currentColor" stroke="none" />
-              <circle cx="14" cy="11" r="1.1" fill="currentColor" stroke="none" />
-            </svg>
-            <span className="askpage-header-title">
-              <b>BrowserBot Debugger</b>
-            </span>
-          </div>
-        </div>
-
-        <div className="askpage-acts">
           {messages.length > 0 && (
-            <button className="askpage-header-btn" onClick={clearConversation} title="New conversation">
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12 5v14M5 12h14" />
-              </svg>
+            <button className="askpage-header-btn" onClick={clearConversation} title="New conversation" aria-label="New conversation">
+              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
             </button>
           )}
-          <select
-            className="askpage-select"
-            value={providerType === 'openai' ? `openai:${selectedOpenAIId}` : providerType}
-            onChange={e => {
-              const v = e.target.value;
-              if (v.startsWith('openai:')) {
-                setProviderType('openai');
-                setSelectedOpenAIId(v.replace('openai:', ''));
-              } else {
-                setProviderType(v as AIProviderType);
-              }
-            }}
-          >
-            {openaiProviders.map(p => (
-              <option key={p.id} value={`openai:${p.id}`}>
-                {p.name} ({p.model})
-              </option>
-            ))}
-            <option value="ollama">Ollama ({ollamaModel || 'default'})</option>
-            <option value="chrome_ai">Chrome AI</option>
-          </select>
         </div>
       </div>
 
-      {/* ─── Context Bar (Tape effect) ─── */}
+      {/* ─── Context Bar ─── */}
       {capturedData && (
-        <div
-          className="askpage-ctx"
-          style={{ margin: '8px 14px 0' }}
-          title={capturedData.metadata?.url || 'Captured context'}
-        >
-          <svg className="askpage-fav" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+        <div className="askpage-ctx" title={`Target: ${capturedData.target.url}`}>
+          <svg className="askpage-fav" viewBox="0 0 24 24" fill="none" stroke="none">
+            <rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" stroke="none" />
+            <path d="M13 6l-5 7h4l-1 5 5-7h-4z" fill="#fff" stroke="none" />
           </svg>
-          <b>{capturedData.metadata?.title || 'Inspected Webpage'}</b>
-          <span>
-            {[
-              capturedData.dom ? `<${capturedData.dom.tag.toLowerCase()}>` : null,
-              capturedData.logs?.length ? `${capturedData.logs.length} logs` : null,
-              capturedData.network?.length ? `${capturedData.network.length} reqs` : null,
-              capturedData.performance ? 'Perf' : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
-          </span>
+          <b>{capturedData.target.title || 'DevTools Inspect'}</b>
+          <span>{capturedData.target.framework || 'Web App'}</span>
         </div>
       )}
 
@@ -278,16 +457,7 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
       <div className="askpage-messages" ref={messagesContainerRef}>
         {messages.length === 0 ? (
           <div className="askpage-welcome">
-            <svg className="askpage-welcome-logo" viewBox="0 0 24 24" fill="none" stroke="none">
-              <rect width="24" height="24" rx="7" fill="currentColor" stroke="none" />
-              <path
-                d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z"
-                fill="#fff"
-                stroke="none"
-              />
-              <circle cx="10" cy="11" r="1.1" fill="currentColor" stroke="none" />
-              <circle cx="14" cy="11" r="1.1" fill="currentColor" stroke="none" />
-            </svg>
+            <img src={iconUrl} className="askpage-welcome-logo askpage-logo" alt="BrowserBot" />
             <h2>Hi, I'm BrowserBot Debugger</h2>
             <p>I have live access to your console logs, network requests, DOM elements, and performance metrics.</p>
             <span className="askpage-welcome-pick">
@@ -403,17 +573,35 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
       {/* ─── Footer Composer ─── */}
       <div className="askpage-footer">
         <div className="askpage-cmp">
+          <div className="askpage-context-pills" style={{ marginBottom: 4 }}>
+            {capturedData && (
+              <span className="askpage-pill active" title="DevTools Context Attached">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                DevTools Context
+              </span>
+            )}
+            <span
+              className="askpage-pill model"
+              title={`Model: ${getCurrentModelLabel()} — type /model to switch`}
+              onClick={() => openSlash('model')}
+              style={{ cursor: 'pointer' }}
+            >
+              {getCurrentModelShort()}
+            </span>
+          </div>
+
           <textarea
             ref={inputRef}
             className="askpage-input"
             value={input}
             onChange={e => {
               setInput(e.target.value);
+              detectSlash(e.target.value, e.target.selectionStart ?? e.target.value.length);
               e.target.style.height = 'auto';
               e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
             }}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask about this page or DevTools data…"
+            onKeyDown={onTextareaKeyDown}
+            placeholder="Ask about this page or DevTools data… (type / for commands)"
             rows={1}
             disabled={isStreaming}
           />
@@ -446,7 +634,7 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
             ) : (
               <button
                 className="askpage-send"
-                onClick={() => sendMessage()}
+                onClick={() => { closeSlash(); sendMessage(); }}
                 disabled={!input.trim()}
                 title="Send message"
               >
@@ -463,6 +651,23 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
               </button>
             )}
           </div>
+
+          {slashOpen && (
+            <SlashMenu
+              menuRef={slashMenuRef}
+              slashMode={slashMode}
+              slashOptions={slashOptions}
+              slashIndex={slashIndex}
+              currentModelShort={getCurrentModelShort()}
+              onSetSlashIndex={setSlashIndex}
+              onBackToRoot={() => {
+                setSlashMode('root');
+                setSlashQuery('');
+                setSlashIndex(0);
+              }}
+              onSelectOption={selectSlashOption}
+            />
+          )}
         </div>
       </div>
     </div>

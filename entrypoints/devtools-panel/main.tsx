@@ -2,13 +2,18 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AskDevtoolsPanel from './AskDevtoolsPanel';
 import { getStyles, ensurePanelFonts, getRoughFilterSVG } from '../../utils/chatStyles';
+import { initTheme, onThemeChange, applyTheme } from '../../utils/theme';
+
+// Initialize and sync theme
+void initTheme();
+onThemeChange(applyTheme);
 
 // Register fonts
 void ensurePanelFonts();
 
 // Inject styles globally since we are not in shadow DOM
 const style = document.createElement('style');
-style.textContent = getStyles().replace(/:host/g, ':root, body');
+style.textContent = getStyles();
 document.head.appendChild(style);
 
 // Inject rough filter SVG if not already present

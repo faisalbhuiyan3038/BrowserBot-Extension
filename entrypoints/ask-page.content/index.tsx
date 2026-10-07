@@ -3,6 +3,7 @@ import { createElement } from 'react';
 import AskPagePanel from './AskPagePanel';
 import { extractPageContent } from '../../utils/extractor';
 import { getStyles, getRoughFilterSVG, ensurePanelFonts } from '../../utils/chatStyles';
+import { getStoredTheme, onThemeChange } from '../../utils/theme';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -67,6 +68,9 @@ export default defineContentScript({
         }
       } catch { /* non-fatal */ }
 
+      const initialTheme = await getStoredTheme();
+      let unlistenTheme: (() => void) | null = null;
+
       const ui = await createShadowRootUi(ctx, {
         name: 'browserbot-ask-page',
         position: 'overlay',
@@ -83,16 +87,32 @@ export default defineContentScript({
           filterContainer.innerHTML = getRoughFilterSVG();
           shadowRoot.appendChild(filterContainer);
 
+          // Apply theme to host container
+          ui.uiContainer.setAttribute('data-theme', initialTheme);
+          container.setAttribute('data-theme', initialTheme);
+
           // Create React root
           const wrapper = document.createElement('div');
           wrapper.id = 'browserbot-ask-page-root';
+          wrapper.setAttribute('data-theme', initialTheme);
           container.appendChild(wrapper);
+
+          unlistenTheme = onThemeChange((nextTheme) => {
+            ui.uiContainer.setAttribute('data-theme', nextTheme);
+            container.setAttribute('data-theme', nextTheme);
+            wrapper.setAttribute('data-theme', nextTheme);
+          });
+
           panelRoot = createRoot(wrapper);
           panelRoot.render(
             createElement(AskPagePanel, {
               pageTitle,
               pageUrl,
               onClose: () => {
+                if (unlistenTheme) {
+                  unlistenTheme();
+                  unlistenTheme = null;
+                }
                 ui.remove();
                 uiMounted = false;
                 panelRoot = null;
@@ -106,6 +126,10 @@ export default defineContentScript({
           );
         },
         onRemove() {
+          if (unlistenTheme) {
+            unlistenTheme();
+            unlistenTheme = null;
+          }
           panelRoot?.unmount();
           panelRoot = null;
           window.dispatchEvent(new CustomEvent('browserbot-ask-page-state', { detail: { open: false } }));
@@ -117,4 +141,3 @@ export default defineContentScript({
     }
   }
 });
-
