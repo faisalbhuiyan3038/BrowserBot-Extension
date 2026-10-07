@@ -354,8 +354,8 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   }, [panelWidth]);
 
   // ─── Send message ───────────────────────────────────
-  const sendMessage = async () => {
-    const text = input.trim();
+  const sendMessage = async (overrideText?: string) => {
+    const text = (overrideText !== undefined ? overrideText : input).trim();
     if (isStreaming || !text) return;
     setSlashOpen(false);
     setSlashMode('root');
@@ -411,7 +411,11 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     }
 
     // Add conversation history
-    for (const msg of messages) {
+    const baseMessages = overrideText !== undefined
+      ? messages.filter(m => m.role !== 'error').slice(0, -1)
+      : messages;
+
+    for (const msg of baseMessages) {
       if (msg.role === 'error') continue;
       if (msg.role === 'assistant') {
         const content = msg.content || (msg.thinking ? `[Thinking process: ${msg.thinking}]` : '');
@@ -447,12 +451,18 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     activeRequestIdRef.current = newRequestId;
 
     // Update UI
-    setMessages(prev => [
-      ...prev,
-      { role: 'user', content: text },
-      { role: 'assistant', content: '' }
-    ]);
-    setInput('');
+    setMessages(prev => {
+      const filtered = prev.filter(m => m.role !== 'error');
+      const base = overrideText !== undefined ? filtered.slice(0, -1) : filtered;
+      return [
+        ...base,
+        { role: 'user', content: text },
+        { role: 'assistant', content: '' }
+      ];
+    });
+    if (overrideText === undefined) {
+      setInput('');
+    }
     setIsStreaming(true);
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
@@ -1037,7 +1047,9 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
         }}
         onRetry={() => {
           const lastUser = [...messages].reverse().find(m => m.role === 'user');
-          if (lastUser) setInput(lastUser.content);
+          if (lastUser) {
+            sendMessage(lastUser.content);
+          }
         }}
         onContinueResponse={() => {
           setInput('Please continue and provide your final response based on the thinking above.');

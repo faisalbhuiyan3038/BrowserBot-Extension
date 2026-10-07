@@ -52,6 +52,21 @@ export default defineContentScript({
       // Fire-and-forget: text swaps in automatically once loaded.
       void ensurePanelFonts();
 
+      try {
+        if (!document.getElementById('browserbot-rough-filter-global')) {
+          const globalFilter = document.createElement('div');
+          globalFilter.id = 'browserbot-rough-filter-global';
+          globalFilter.style.position = 'absolute';
+          globalFilter.style.width = '0';
+          globalFilter.style.height = '0';
+          globalFilter.style.overflow = 'hidden';
+          globalFilter.style.pointerEvents = 'none';
+          globalFilter.setAttribute('aria-hidden', 'true');
+          globalFilter.innerHTML = getRoughFilterSVG();
+          (document.body || document.documentElement).appendChild(globalFilter);
+        }
+      } catch { /* non-fatal */ }
+
       const ui = await createShadowRootUi(ctx, {
         name: 'browserbot-ask-page',
         position: 'overlay',

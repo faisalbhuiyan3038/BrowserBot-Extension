@@ -1,5 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { ChatMsg, SystemPrompt } from '../../../utils/storage';
+
+const THINKING_MESSAGES = [
+  'Skimming the page…',
+  'Underlining the good bits…',
+  'Writing it up…',
+];
 
 interface MessageListProps {
   messages: ChatMsg[];
@@ -34,11 +40,24 @@ export const MessageList: React.FC<MessageListProps> = ({
   onScroll,
   renderMarkdown,
 }) => {
+  const [thinkingIndex, setThinkingIndex] = useState(0);
+
+  useEffect(() => {
+    if (!isStreaming) {
+      setThinkingIndex(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      setThinkingIndex(prev => (prev + 1) % THINKING_MESSAGES.length);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isStreaming]);
+
   return (
     <div className="askpage-messages" ref={messagesContainerRef} onScroll={onScroll}>
       {messages.length === 0 ? (
         <div className="askpage-welcome">
-          <svg className="askpage-welcome-logo" viewBox="0 0 24 24" fill="none" stroke="none">
+          <svg className="askpage-welcome-logo askpage-logo" viewBox="0 0 24 24" fill="none" stroke="none">
             <rect width="24" height="24" rx="7" fill="currentColor" stroke="none" />
             <path d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z" fill="#fff" stroke="none" />
             <circle cx="10" cy="11" r="1.1" fill="currentColor" stroke="none" />
@@ -92,7 +111,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                   <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5M12 16h.01" /></svg>
                   <div>
                     <b>Couldn't read this page's content</b>
-                    <p>{msg.content}</p>
+                    <p>{msg.content || "The page blocked BrowserBot from reading it. Allow site access in the extension settings, then retry."}</p>
                     <button className="askpage-retry" onClick={onRetry}>Retry</button>
                   </div>
                 </div>
@@ -134,7 +153,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                   ) : isCurrentlyStreaming ? (
                     <div className="askpage-b askpage-dots">
                       <svg className="askpage-scr" viewBox="0 0 64 16"><path pathLength={1} d="M2 8q5-12 10 0t10 0 10 0 10 0 10 0 10 0" /></svg>
-                      <span>{showLiveThinking ? 'Thinking…' : 'Thinking…'}</span>
+                      <span>{THINKING_MESSAGES[thinkingIndex]}</span>
                     </div>
                   ) : hasThinking ? (
                     <div className="askpage-b">
