@@ -105,6 +105,10 @@ export interface StorageState {
 
   // Organize Bookmarks config
   bookmarkOrganizePrompt: string;     // custom system prompt for bookmark organizing
+
+  // Opt-in Copy-Paste AI config (hidden by default)
+  copyPasteUnlocked: boolean;
+  copyPasteUnlockCommand: string;
 }
 
 export const DEFAULT_TAB_GROUP_PROMPT: SystemPrompt = {
@@ -249,6 +253,10 @@ export const defaultState: StorageState = {
 
   // Organize Bookmarks defaults
   bookmarkOrganizePrompt: DEFAULT_BOOKMARK_ORGANIZE_PROMPT,
+
+  // Opt-in Copy-Paste AI defaults (hidden by default)
+  copyPasteUnlocked: false,
+  copyPasteUnlockCommand: '/unlockMySecrets3038',
 };
 
 export const AppStorage = {
@@ -272,6 +280,13 @@ export const AppStorage = {
     // Ensure bookmark organize prompt exists
     if (!merged.bookmarkOrganizePrompt) {
       merged.bookmarkOrganizePrompt = DEFAULT_BOOKMARK_ORGANIZE_PROMPT;
+    }
+    // Ensure copy-paste defaults exist
+    if (merged.copyPasteUnlocked === undefined) {
+      merged.copyPasteUnlocked = false;
+    }
+    if (!merged.copyPasteUnlockCommand) {
+      merged.copyPasteUnlockCommand = '/unlockMySecrets3038';
     }
     return merged;
   },

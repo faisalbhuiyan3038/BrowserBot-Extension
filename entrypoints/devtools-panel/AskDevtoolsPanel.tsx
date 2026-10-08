@@ -5,6 +5,9 @@ import { DevtoolsSidebar } from './components/DevtoolsSidebar';
 import { DevtoolsChatArea } from './components/DevtoolsChatArea';
 import type { DevToolsConfig, DevToolsData } from './types';
 import { inferInitiator } from './types';
+import type { ParsedAIAction } from '../../utils/actionExecutor';
+import { executeTabGroups, executeBookmarkPlan } from '../../utils/actionExecutor';
+import { getBookmarkTree } from '../../utils/bookmarks';
 
 marked.setOptions({ breaks: true, gfm: true });
 
@@ -22,6 +25,10 @@ export default function AskDevtoolsPanel() {
   const [thinkingContent, setThinkingContent] = useState('');
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const [devtoolsSystemPrompt, setDevtoolsSystemPrompt] = useState('');
+
+  // Opt-in Copy-Paste AI state
+  const [copyPasteUnlocked, setCopyPasteUnlocked] = useState(false);
+  const [copyPasteUnlockCommand, setCopyPasteUnlockCommand] = useState('/unlockMySecrets3038');
 
   // DevTools specific state
   const [config, setConfig] = useState<DevToolsConfig>({
@@ -82,7 +89,19 @@ export default function AskDevtoolsPanel() {
       setSelectedOpenAIId(state.activeOpenAIProviderId);
       setOllamaModel(state.ollamaModel);
       setDevtoolsSystemPrompt(state.askDevToolsSystemPrompt);
+      setCopyPasteUnlocked(state.copyPasteUnlocked ?? false);
+      setCopyPasteUnlockCommand(state.copyPasteUnlockCommand || '/unlockMySecrets3038');
     });
+
+    const handleStorageChange = (changes: any, area: string) => {
+      if (area === 'local' && changes.appState?.newValue) {
+        const state = changes.appState.newValue;
+        if (state.copyPasteUnlocked !== undefined) setCopyPasteUnlocked(state.copyPasteUnlocked);
+        if (state.copyPasteUnlockCommand) setCopyPasteUnlockCommand(state.copyPasteUnlockCommand);
+      }
+    };
+    browser.storage.onChanged.addListener(handleStorageChange);
+    return () => browser.storage.onChanged.removeListener(handleStorageChange);
   }, []);
 
   useEffect(() => {
@@ -585,6 +604,25 @@ export default function AskDevtoolsPanel() {
     const text = (textOverride !== undefined ? textOverride : input).trim();
     if (isStreaming || !text) return;
 
+    // Secret unlock / lock command interception
+    const unlockCmd = (copyPasteUnlockCommand || '/unlockMySecrets3038').trim().toLowerCase();
+    if (text.toLowerCase() === unlockCmd) {
+      await AppStorage.set({ copyPasteUnlocked: true });
+      setCopyPasteUnlocked(true);
+      setInput('');
+      setCaptureStatus('🔓 Copy-Paste AI workflow unlocked!');
+      setTimeout(() => setCaptureStatus(''), 3000);
+      return;
+    }
+    if (copyPasteUnlocked && (text.toLowerCase() === '/lock' || text.toLowerCase() === '/lockcopypaste')) {
+      await AppStorage.set({ copyPasteUnlocked: false });
+      setCopyPasteUnlocked(false);
+      setInput('');
+      setCaptureStatus('🔒 Copy-Paste AI workflow locked.');
+      setTimeout(() => setCaptureStatus(''), 3000);
+      return;
+    }
+
     const newSessionId = generateUUID();
     sessionIdRef.current = newSessionId;
 
@@ -637,6 +675,48 @@ export default function AskDevtoolsPanel() {
       await captureDevToolsData();
     }
     sendMessage(promptText);
+  };
+
+  const handlePasteAction = async (action: ParsedAIAction) => {
+    if (action.type === 'chat') {
+      const userText = input.trim();
+      const newMessages: ChatMsg[] = [...messages];
+      if (userText) {
+        newMessages.push({ role: 'user', content: userText });
+        setInput('');
+      }
+      newMessages.push({ role: 'assistant', content: action.content });
+      setMessages(newMessages);
+      setCaptureStatus('✓ AI response added');
+      setTimeout(() => setCaptureStatus(''), 3000);
+    } else if (action.type === 'tab_groups') {
+      try {
+        const tabs = await browser.tabs.query({ currentWindow: true });
+        const tabsInfo = tabs.map(t => ({ id: t.id!, url: t.url!, title: t.title || '' }));
+        const res = await executeTabGroups(action.categories, false, tabsInfo);
+        setMessages(prev => [
+          ...prev,
+          { role: 'assistant', content: `✓ Organized tabs into **${res.created}** groups (${res.totalTabs} tabs).` }
+        ]);
+        setCaptureStatus(`✓ Applied ${res.created} tab groups`);
+        setTimeout(() => setCaptureStatus(''), 3000);
+      } catch (e: any) {
+        setCaptureStatus(`Error: ${e?.message || e}`);
+      }
+    } else if (action.type === 'bookmarks') {
+      try {
+        const tree = await getBookmarkTree();
+        const res = await executeBookmarkPlan(action.plan, tree.folders, tree.bookmarks);
+        setMessages(prev => [
+          ...prev,
+          { role: 'assistant', content: `✓ Bookmark plan applied: Created **${res.foldersCreated}** folders, moved **${res.bookmarksMoved}** bookmarks.` }
+        ]);
+        setCaptureStatus(`✓ Moved ${res.bookmarksMoved} bookmarks`);
+        setTimeout(() => setCaptureStatus(''), 3000);
+      } catch (e: any) {
+        setCaptureStatus(`Error: ${e?.message || e}`);
+      }
+    }
   };
 
   const renderMarkdown = (content: string) => {
@@ -743,6 +823,10 @@ export default function AskDevtoolsPanel() {
         sendMessage={sendMessage}
         onRetry={handleRetry}
         onSelectWelcomePrompt={handleSelectWelcomePrompt}
+        copyPasteUnlocked={copyPasteUnlocked}
+        copyPasteUnlockCommand={copyPasteUnlockCommand}
+        buildSystemPrompt={buildSystemPrompt}
+        onExecutePasteAction={handlePasteAction}
       />
     </div>
   );

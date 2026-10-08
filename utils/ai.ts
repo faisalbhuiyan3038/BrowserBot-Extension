@@ -32,7 +32,7 @@ export type GroupCategory = {
 /**
  * Interpolate prompt template variables with actual tab data.
  */
-function interpolatePrompt(
+export function interpolatePrompt(
   template: string,
   tabs: TabInfo[],
   existingGroups: ExistingGroup[]
@@ -61,7 +61,7 @@ function interpolatePrompt(
 
 // The output format is always appended programmatically — users
 // don't need to include it in their custom prompts.
-const OUTPUT_FORMAT_INSTRUCTION = `
+export const OUTPUT_FORMAT_INSTRUCTION = `
 
 Return a JSON object with the following structure:
 {
@@ -84,6 +84,28 @@ export interface GroupTabsOptions {
   keepExistingGroups?: boolean; // programmatic instruction to preserve existing groups
 }
 
+export function buildTabGroupPrompt(
+  templateText: string,
+  tabs: TabInfo[],
+  existingGroups: ExistingGroup[] = [],
+  options: GroupTabsOptions = {}
+): string {
+  let promptText = templateText;
+
+  if (options.keepExistingGroups && existingGroups.length > 0) {
+    promptText += `\n\nIMPORTANT: The user wants to keep their existing tab groups intact.\nHere is the data for existing groups:\n{existingGroups}\n\nIf a tab currently belongs to an existing group, you MUST keep it in that group by assigning it the EXACT same "name" and "color". You may also add ungrouped tabs to these existing groups. Do not rename existing groups or change their colors.`;
+  }
+
+  let fullPrompt = interpolatePrompt(promptText, tabs, existingGroups);
+
+  if (options.customInstructions?.trim()) {
+    fullPrompt += '\n\nAdditional instructions:\n' + options.customInstructions.trim();
+  }
+
+  fullPrompt += OUTPUT_FORMAT_INSTRUCTION;
+  return fullPrompt;
+}
+
 export async function groupTabsWithAI(
   tabs: TabInfo[],
   existingGroups: ExistingGroup[] = [],
@@ -100,20 +122,7 @@ export async function groupTabsWithAI(
     promptTemplate = await AppStorage.getActiveTabGroupPrompt();
   }
 
-  let templateText = promptTemplate.prompt;
-
-  if (options.keepExistingGroups && existingGroups.length > 0) {
-    templateText += `\n\nIMPORTANT: The user wants to keep their existing tab groups intact.\nHere is the data for existing groups:\n{existingGroups}\n\nIf a tab currently belongs to an existing group, you MUST keep it in that group by assigning it the EXACT same "name" and "color". You may also add ungrouped tabs to these existing groups. Do not rename existing groups or change their colors.`;
-  }
-
-  // Build the full prompt: template → custom instructions → output format
-  let fullPrompt = interpolatePrompt(templateText, tabs, existingGroups);
-
-  if (options.customInstructions?.trim()) {
-    fullPrompt += '\n\nAdditional instructions:\n' + options.customInstructions.trim();
-  }
-
-  fullPrompt += OUTPUT_FORMAT_INSTRUCTION;
+  const fullPrompt = buildTabGroupPrompt(promptTemplate.prompt, tabs, existingGroups, options);
 
   let jsonResponse = '';
 
@@ -222,7 +231,7 @@ export interface OrganizeBookmarksOptions {
   customInstructions?: string;
 }
 
-const BOOKMARK_OUTPUT_FORMAT = `
+export const BOOKMARK_OUTPUT_FORMAT = `
 
 IMPORTANT — Root Folder Rules:
 Browsers organize bookmarks under a few fixed "root" parent folders (e.g. "Bookmarks Toolbar", "Other Bookmarks", "Mobile Bookmarks").
@@ -247,13 +256,11 @@ Rules:
 - Every bookmark must have exactly one move entry.
 - Only return valid JSON. No markdown, no explanation.`;
 
-export async function organizeBookmarksWithAI(
+export function buildBookmarkOrganizePrompt(
+  templatePrompt: string,
   options: OrganizeBookmarksOptions
-): Promise<OrganizePlan> {
-  const state = await AppStorage.get();
-
-  // Interpolate template variables in the user's custom prompt
-  let prompt = (state.bookmarkOrganizePrompt || '')
+): string {
+  let prompt = (templatePrompt || '')
     .replace(/{bookmarkList}/g,     options.bookmarkListText)
     .replace(/{bookmarkCount}/g,    String(options.bookmarkCount))
     .replace(/{folderList}/g,       options.folderListText)
@@ -272,6 +279,15 @@ export async function organizeBookmarksWithAI(
   }
 
   prompt += BOOKMARK_OUTPUT_FORMAT;
+  return prompt;
+}
+
+export async function organizeBookmarksWithAI(
+  options: OrganizeBookmarksOptions
+): Promise<OrganizePlan> {
+  const state = await AppStorage.get();
+
+  const prompt = buildBookmarkOrganizePrompt(state.bookmarkOrganizePrompt, options);
 
   let jsonResponse = '';
   if (state.activeProvider === 'chrome_ai') {

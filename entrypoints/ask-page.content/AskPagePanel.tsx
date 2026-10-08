@@ -8,6 +8,13 @@ import { HistorySidebar } from './components/HistorySidebar';
 import { TabPickerModal } from './components/TabPickerModal';
 import { SlashMenu } from './components/SlashMenu';
 import { MessageList } from './components/MessageList';
+import { CopyPromptDropdown } from '../../components/CopyPromptDropdown';
+import { PasteResponseModal } from '../../components/PasteResponseModal';
+import type { PromptContext } from '../../utils/copyModules';
+import type { ParsedAIAction } from '../../utils/actionExecutor';
+import { executeTabGroups, executeBookmarkPlan } from '../../utils/actionExecutor';
+import { getBookmarkTree } from '../../utils/bookmarks';
+import type { TabInfo } from '../../utils/ai';
 
 // Hardcoded instruction always appended to Ask Page system prompts
 const MARKDOWN_FORMAT_INSTRUCTION = '\n\nIMPORTANT: Always format your responses using markdown. Use headings, bullet points, code blocks, bold, italic, and other markdown features to make your responses well-structured and readable.';
@@ -36,6 +43,19 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   const [persistChat, setPersistChat] = useState(false);
   const [currentTabAttached, setCurrentTabAttached] = useState(false);
   const [extractionAlgorithm, setExtractionAlgorithm] = useState<ExtractionAlgorithm>(1);
+
+  // Copy-paste manual workflow state
+  const [copyPasteUnlocked, setCopyPasteUnlocked] = useState(false);
+  const [copyPasteUnlockCommand, setCopyPasteUnlockCommand] = useState('/unlockMySecrets3038');
+  const [showPasteModal, setShowPasteModal] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToastMessage(msg);
+    toastTimerRef.current = setTimeout(() => setToastMessage(null), 3000);
+  }, []);
 
   // Provider state
   const [providerType, setProviderType] = useState<AIProviderType>('openai');
@@ -126,6 +146,8 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
       setPanelWidth(state.askPagePanelWidth || 420);
       setPersistChat(state.askPagePersistChat || false);
       setExtractionAlgorithm(state.pageExtractionAlgorithm || 1);
+      setCopyPasteUnlocked(state.copyPasteUnlocked ?? false);
+      setCopyPasteUnlockCommand(state.copyPasteUnlockCommand || '/unlockMySecrets3038');
 
       // Load persisted chat if enabled
       if (state.askPagePersistChat) {
@@ -150,6 +172,8 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
         setPanelWidth(state.askPagePanelWidth || 420);
         setPersistChat(state.askPagePersistChat || false);
         setExtractionAlgorithm(state.pageExtractionAlgorithm || 1);
+        if (state.copyPasteUnlocked !== undefined) setCopyPasteUnlocked(state.copyPasteUnlocked);
+        if (state.copyPasteUnlockCommand) setCopyPasteUnlockCommand(state.copyPasteUnlockCommand);
       }
     };
     browser.storage.onChanged.addListener(handleStorageChange);
@@ -357,6 +381,26 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   const sendMessage = async (overrideText?: string) => {
     const text = (overrideText !== undefined ? overrideText : input).trim();
     if (isStreaming || !text) return;
+
+    // Secret unlock / lock command interception
+    const unlockCmd = (copyPasteUnlockCommand || '/unlockMySecrets3038').trim().toLowerCase();
+    if (text.toLowerCase() === unlockCmd) {
+      await AppStorage.set({ copyPasteUnlocked: true });
+      setCopyPasteUnlocked(true);
+      setInput('');
+      closeSlash();
+      showToast('🔓 Copy-Paste AI workflow unlocked!');
+      return;
+    }
+    if (copyPasteUnlocked && (text.toLowerCase() === '/lock' || text.toLowerCase() === '/lockcopypaste')) {
+      await AppStorage.set({ copyPasteUnlocked: false });
+      setCopyPasteUnlocked(false);
+      setInput('');
+      closeSlash();
+      showToast('🔒 Copy-Paste AI workflow locked.');
+      return;
+    }
+
     setSlashOpen(false);
     setSlashMode('root');
     setSlashQuery('');
@@ -493,6 +537,33 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     e.stopPropagation();
+
+    // Check for secret unlock / lock command before slash selection
+    if (e.key === 'Enter' && !e.shiftKey) {
+      const trimmedInput = input.trim().toLowerCase();
+      const unlockCmd = (copyPasteUnlockCommand || '/unlockMySecrets3038').trim().toLowerCase();
+      if (trimmedInput === unlockCmd) {
+        e.preventDefault();
+        AppStorage.set({ copyPasteUnlocked: true }).then(() => {
+          setCopyPasteUnlocked(true);
+          setInput('');
+          closeSlash();
+          showToast('🔓 Copy-Paste AI workflow unlocked!');
+        });
+        return;
+      }
+      if (copyPasteUnlocked && (trimmedInput === '/lock' || trimmedInput === '/lockcopypaste')) {
+        e.preventDefault();
+        AppStorage.set({ copyPasteUnlocked: false }).then(() => {
+          setCopyPasteUnlocked(false);
+          setInput('');
+          closeSlash();
+          showToast('🔒 Copy-Paste AI workflow locked.');
+        });
+        return;
+      }
+    }
+
     if (slashOpen) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -985,6 +1056,53 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
+  // ─── Handle Paste-back Action ───────────────────────
+  const handlePasteAction = async (action: ParsedAIAction) => {
+    if (action.type === 'chat') {
+      const userText = input.trim();
+      const newMessages: ChatMsg[] = [...messages];
+      if (userText) {
+        newMessages.push({ role: 'user', content: userText });
+        setInput('');
+      }
+      newMessages.push({ role: 'assistant', content: action.content });
+      setMessages(newMessages);
+      if (persistChat) {
+        browser.runtime.sendMessage({ type: 'SAVE_CHAT', messages: newMessages }).catch(() => {});
+      }
+      showToast('✓ AI response added');
+    } else if (action.type === 'tab_groups') {
+      try {
+        const tabs = await browser.tabs.query({ currentWindow: true });
+        const tabsInfo: TabInfo[] = tabs
+          .filter(t => t.id != null && t.url && !t.url.startsWith('chrome://') && !t.url.startsWith('chrome-extension://'))
+          .map(t => ({ id: t.id!, url: t.url!, title: t.title || '' }));
+        const res = await executeTabGroups(action.categories, false, tabsInfo);
+        const newMessages: ChatMsg[] = [
+          ...messages,
+          { role: 'assistant', content: `✓ Organized tabs into **${res.created}** groups (${res.totalTabs} tabs).` }
+        ];
+        setMessages(newMessages);
+        showToast(`✓ Applied ${res.created} tab groups`);
+      } catch (err: any) {
+        showToast(`Error applying tab groups: ${err?.message || err}`);
+      }
+    } else if (action.type === 'bookmarks') {
+      try {
+        const tree = await getBookmarkTree();
+        const res = await executeBookmarkPlan(action.plan, tree.folders, tree.bookmarks);
+        const newMessages: ChatMsg[] = [
+          ...messages,
+          { role: 'assistant', content: `✓ Bookmark plan applied: Created **${res.foldersCreated}** folders, moved **${res.bookmarksMoved}** bookmarks.` }
+        ];
+        setMessages(newMessages);
+        showToast(`✓ Moved ${res.bookmarksMoved} bookmarks`);
+      } catch (err: any) {
+        showToast(`Error applying bookmark plan: ${err?.message || err}`);
+      }
+    }
+  };
+
   // ─── Render markdown safely ─────────────────────────
   const renderMarkdown = (content: string) => {
     if (!content) return '';
@@ -1149,21 +1267,55 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
             aria-label="Message BrowserBot"
           />
           <div className="askpage-row">
-            <button
-              className={`askpage-att ${currentTabAttached ? 'active' : ''}`}
-              onClick={() => {
-                // Prototype behavior: toggle page context; slash menu also available via "/"
-                if (!currentTabAttached && attachedTabs.length === 0 && !input.includes('/')) {
-                  openSlash('root');
-                  return;
-                }
-                toggleCurrentTab();
-              }}
-              title={currentTabAttached ? 'Page attached — click to remove (or type / for more options)' : 'Attach page context (or type / for models, prompts, tabs)'}
-            >
-              <svg viewBox="0 0 24 24"><path d="M20 11.5l-8 8a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L9.7 17.2a1.7 1.7 0 0 1-2.4-2.4L15 7" /></svg>
-              Page + selection
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <button
+                className={`askpage-att ${currentTabAttached ? 'active' : ''}`}
+                onClick={() => {
+                  // Prototype behavior: toggle page context; slash menu also available via "/"
+                  if (!currentTabAttached && attachedTabs.length === 0 && !input.includes('/')) {
+                    openSlash('root');
+                    return;
+                  }
+                  toggleCurrentTab();
+                }}
+                title={currentTabAttached ? 'Page attached — click to remove (or type / for more options)' : 'Attach page context (or type / for models, prompts, tabs)'}
+              >
+                <svg viewBox="0 0 24 24"><path d="M20 11.5l-8 8a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L9.7 17.2a1.7 1.7 0 0 1-2.4-2.4L15 7" /></svg>
+                Page + selection
+              </button>
+
+              {copyPasteUnlocked && (
+                <>
+                  <CopyPromptDropdown
+                    context={{
+                      scope: 'ask-page',
+                      userPrompt: input,
+                      systemPrompt: systemPrompt,
+                      pageTitle,
+                      pageUrl,
+                      selectedText: window.getSelection()?.toString() || '',
+                      pageContent: currentTabContent || '',
+                      attachedTabs: getAllAttachedTabs(),
+                      historyMessages: messages,
+                    }}
+                    onCopied={(label) => showToast(`✓ Copied ${label}`)}
+                  />
+                  <button
+                    type="button"
+                    className="askpage-att"
+                    onClick={() => setShowPasteModal(true)}
+                    title="Paste AI Response (ChatGPT / Claude / Gemini)"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}>
+                      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                      <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                    </svg>
+                    Paste AI
+                  </button>
+                </>
+              )}
+            </div>
+
             {isStreaming ? (
               <button className="askpage-send" onClick={abortStream} title="Stop" aria-label="Stop">
                 <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style={{ fill: 'currentColor' }}>
@@ -1219,6 +1371,40 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
           onCancel={() => setShowTabPicker(false)}
           onConfirm={confirmTabSelection}
         />
+      )}
+
+      {/* Paste AI Response Modal */}
+      {showPasteModal && (
+        <PasteResponseModal
+          open={showPasteModal}
+          onClose={() => setShowPasteModal(false)}
+          targetScope="auto"
+          onExecuteAction={handlePasteAction}
+        />
+      )}
+
+      {/* Notification Toast */}
+      {toastMessage && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '75px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'var(--bd, #2a2622)',
+            color: 'var(--pbg, #fffbf0)',
+            padding: '8px 16px',
+            borderRadius: '20px',
+            fontSize: '13px',
+            fontWeight: 700,
+            zIndex: 9999,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+            pointerEvents: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {toastMessage}
+        </div>
       )}
     </div>
   );

@@ -6,6 +6,11 @@ import {
   getBookmarkTree, buildBookmarkListText, buildFolderListText, buildDomainList, buildRootParentList,
   applyOrganizePlan, FlatBookmark, FlatFolder, OrganizePlan
 } from '../../utils/bookmarks';
+import { CopyPromptDropdown } from '../../components/CopyPromptDropdown';
+import { PasteResponseModal } from '../../components/PasteResponseModal';
+import type { PromptContext } from '../../utils/copyModules';
+import type { ParsedAIAction } from '../../utils/actionExecutor';
+import { executeTabGroups, executeBookmarkPlan } from '../../utils/actionExecutor';
 
 type View = 'home' | 'group-tabs' | 'devtools-info' | 'bookmarks';
 type BookmarksTab = 'organize' | 'ask';
@@ -16,6 +21,13 @@ export default function App() {
   const [status, setStatus] = useState('');
   const [keepExisting, setKeepExisting] = useState(false);
   const [customInstructions, setCustomInstructions] = useState('');
+
+  // Opt-in Copy-Paste AI state
+  const [copyPasteUnlocked, setCopyPasteUnlocked] = useState(false);
+  const [showPasteModal, setShowPasteModal] = useState(false);
+  const [pasteModalScope, setPasteModalScope] = useState<'tab_groups' | 'bookmarks'>('tab_groups');
+  const [tabContext, setTabContext] = useState<PromptContext | null>(null);
+  const [bookmarkContext, setBookmarkContext] = useState<PromptContext | null>(null);
 
   // Prompt selection
   const [prompts, setPrompts] = useState<SystemPrompt[]>([]);
@@ -41,12 +53,102 @@ export default function App() {
   useEffect(() => { if (bChatRef.current) bChatRef.current.scrollTop = bChatRef.current.scrollHeight; }, [bMessages]);
 
   useEffect(() => {
-    // Load available prompts
+    // Load available prompts & settings
     AppStorage.get().then(state => {
       setPrompts(state.tabGroupPrompts);
       setSelectedPromptId(state.activeTabGroupPromptId);
+      setCopyPasteUnlocked(state.copyPasteUnlocked ?? false);
     });
+
+    const handleStorageChange = (changes: any, area: string) => {
+      if (area === 'local' && changes.appState?.newValue) {
+        const state = changes.appState.newValue;
+        if (state.copyPasteUnlocked !== undefined) setCopyPasteUnlocked(state.copyPasteUnlocked);
+      }
+    };
+    browser.storage.onChanged.addListener(handleStorageChange);
+    return () => browser.storage.onChanged.removeListener(handleStorageChange);
   }, []);
+
+  // Update tab prompt context when relevant state changes
+  useEffect(() => {
+    if (!copyPasteUnlocked || view !== 'group-tabs') return;
+    (async () => {
+      try {
+        const tabs = await browser.tabs.query({ currentWindow: true });
+        const tabsInfo: TabInfo[] = tabs
+          .filter(t => t.id != null && t.url && !t.url.startsWith('chrome://') && !t.url.startsWith('chrome-extension://'))
+          .map(t => ({ id: t.id!, url: t.url!, title: t.title || '' }));
+        let existingGroups: ExistingGroup[] = [];
+        try {
+          const groups = await browser.tabGroups.query({ windowId: (await browser.windows.getCurrent()).id! });
+          for (const g of groups) {
+            const groupTabs = tabs.filter(t => (t as any).groupId === g.id);
+            existingGroups.push({
+              id: g.id,
+              title: g.title || '',
+              color: g.color || 'grey',
+              tabIds: groupTabs.map(t => t.id!).filter(Boolean)
+            });
+          }
+        } catch (_) {}
+        const promptTemplate = prompts.find(p => p.id === selectedPromptId)?.prompt || '';
+        setTabContext({
+          scope: 'tab-group',
+          systemPrompt: promptTemplate,
+          tabs: tabsInfo,
+          existingGroups,
+          customInstructions,
+          keepExistingGroups: keepExisting,
+        });
+      } catch (_) {}
+    })();
+  }, [copyPasteUnlocked, view, prompts, selectedPromptId, customInstructions, keepExisting]);
+
+  // Update bookmark prompt context when relevant state changes
+  useEffect(() => {
+    if (!copyPasteUnlocked || view !== 'bookmarks' || bTab !== 'organize') return;
+    (async () => {
+      try {
+        const tree = await getBookmarkTree();
+        const bookmarkListText = buildBookmarkListText(tree.bookmarks);
+        const folderListText = buildFolderListText(tree.folders);
+        const domainList = buildDomainList(tree.bookmarks);
+        const rootParentList = buildRootParentList(tree.bookmarks);
+        const state = await AppStorage.get();
+        setBookmarkContext({
+          scope: 'bookmarks',
+          systemPrompt: state.bookmarkOrganizePrompt,
+          bookmarkOptions: {
+            bookmarkListText,
+            folderListText,
+            domainList,
+            rootParentList,
+            bookmarkCount: tree.bookmarks.length,
+            rootFolderCount: tree.folders.filter(f => f.depth === 1).length,
+            totalFolderCount: tree.folders.length,
+            restrictToExisting: bRestrictExisting,
+            customInstructions: bCustom,
+          }
+        });
+      } catch (_) {}
+    })();
+  }, [copyPasteUnlocked, view, bTab, bRestrictExisting, bCustom]);
+
+  const handlePopupPasteAction = async (action: ParsedAIAction) => {
+    if (action.type === 'tab_groups') {
+      setStatus('Applying tab groups…');
+      const tabs = await browser.tabs.query({ currentWindow: true });
+      const tabsInfo: TabInfo[] = tabs
+        .filter(t => t.id != null && t.url && !t.url.startsWith('chrome://') && !t.url.startsWith('chrome-extension://'))
+        .map(t => ({ id: t.id!, url: t.url!, title: t.title || '' }));
+      const res = await executeTabGroups(action.categories, keepExisting, tabsInfo);
+      setStatus(`✓ Successfully organized tabs into ${res.created} categories!`);
+    } else if (action.type === 'bookmarks') {
+      setBPlan(action.plan);
+      setBStatus('✓ Plan extracted! Review below and click "Apply Changes".');
+    }
+  };
 
   const openSettings = () => {
     browser.runtime.openOptionsPage();
@@ -357,6 +459,24 @@ export default function App() {
             >
               {loading ? 'Processing…' : 'Group Tabs Now'}
             </button>
+
+            {copyPasteUnlocked && tabContext && (
+              <div className="popup-action-row">
+                <CopyPromptDropdown context={tabContext} variant="popup" />
+                <button
+                  type="button"
+                  className="popup-secondary-btn"
+                  onClick={() => { setPasteModalScope('tab_groups'); setShowPasteModal(true); }}
+                  title="Paste AI response"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                    <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                  </svg>
+                  <span>Paste AI Plan</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -421,9 +541,29 @@ export default function App() {
               )}
 
               {!bPlan && (
-                <button className={`btn primary-btn ${bLoading ? 'loading-pulse' : ''}`} style={{marginTop:'8px'}} onClick={loadBookmarks} disabled={bLoading}>
-                  {bLoading ? 'Analyzing…' : 'Analyze & Organize'}
-                </button>
+                <>
+                  <button className={`btn primary-btn ${bLoading ? 'loading-pulse' : ''}`} style={{marginTop:'8px'}} onClick={loadBookmarks} disabled={bLoading}>
+                    {bLoading ? 'Analyzing…' : 'Analyze & Organize'}
+                  </button>
+
+                  {copyPasteUnlocked && bookmarkContext && (
+                    <div className="popup-action-row">
+                      <CopyPromptDropdown context={bookmarkContext} variant="popup" />
+                      <button
+                        type="button"
+                        className="popup-secondary-btn"
+                        onClick={() => { setPasteModalScope('bookmarks'); setShowPasteModal(true); }}
+                        title="Paste AI response"
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                          <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                        </svg>
+                        <span>Paste AI Plan</span>
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -512,6 +652,16 @@ export default function App() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Paste AI Response Modal */}
+      {showPasteModal && (
+        <PasteResponseModal
+          open={showPasteModal}
+          onClose={() => setShowPasteModal(false)}
+          targetScope={pasteModalScope}
+          onExecuteAction={handlePopupPasteAction}
+        />
       )}
     </div>
   );

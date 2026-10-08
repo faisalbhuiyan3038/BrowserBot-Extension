@@ -382,6 +382,60 @@ export default function App() {
               </select>
             </div>
 
+            {/* Copy-Paste AI (Manual Workflow) Card - only visible when unlocked */}
+            {state.copyPasteUnlocked && (
+              <div className="card" style={{ border: '2px solid var(--ac, #e0482c)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h3 style={{ margin: 0 }}>🔓 Copy-Paste AI (No API Key)</h3>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      background: 'var(--acs, #ffe3d8)',
+                      color: 'var(--act, #b02f17)',
+                      padding: '2px 8px',
+                      borderRadius: '12px'
+                    }}>
+                      Active
+                    </span>
+                  </div>
+                  <button
+                    className="small-btn"
+                    onClick={() => save({ copyPasteUnlocked: false })}
+                    title="Lock the copy-paste workflow and hide all controls"
+                    style={{ background: 'var(--sub)', color: 'var(--fg)', border: '1.5px solid var(--bd)' }}
+                  >
+                    🔒 Lock Workflow
+                  </button>
+                </div>
+
+                <p className="section-desc" style={{ marginBottom: '12px' }}>
+                  The manual workflow is active. You can copy prompts from extension panels, paste them into ChatGPT, Claude, or Gemini, and paste the structured response back into BrowserBot.
+                </p>
+
+                <label className="field-label">Secret Slash Command (To Re-Unlock)</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    value={state.copyPasteUnlockCommand || '/unlockMySecrets3038'}
+                    onChange={e => save({ copyPasteUnlockCommand: e.target.value })}
+                    placeholder="/unlockMySecrets3038"
+                    style={{ fontFamily: 'monospace', fontSize: '13px' }}
+                  />
+                  <button
+                    className="small-btn"
+                    onClick={() => save({ copyPasteUnlockCommand: '/unlockMySecrets3038' })}
+                    title="Reset to default command"
+                  >
+                    Reset
+                  </button>
+                </div>
+                <p style={{ fontSize: '11.5px', color: 'var(--mute)', margin: '4px 0 0' }}>
+                  Typing this command in any BrowserBot chat input unlocks the feature. Type <code>/lock</code> in chat to lock it again.
+                </p>
+              </div>
+            )}
+
             {state.activeProvider === 'ollama' && (
               <div className="card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

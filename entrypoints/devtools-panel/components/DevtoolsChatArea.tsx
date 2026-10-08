@@ -5,6 +5,9 @@ import type { DevToolsData } from '../types';
 import iconUrl from '../../../assets/icon-alt.png';
 import { SlashMenu } from '../../ask-page.content/components/SlashMenu';
 import type { SlashMode, SlashOption } from '../../ask-page.content/types';
+import { CopyPromptDropdown } from '../../../components/CopyPromptDropdown';
+import { PasteResponseModal } from '../../../components/PasteResponseModal';
+import type { ParsedAIAction } from '../../../utils/actionExecutor';
 
 interface DevtoolsChatAreaProps {
   showHistory: boolean;
@@ -42,6 +45,10 @@ interface DevtoolsChatAreaProps {
   sendMessage: (customText?: string) => void;
   onRetry: () => void;
   onSelectWelcomePrompt: (promptText: string) => void;
+  copyPasteUnlocked?: boolean;
+  copyPasteUnlockCommand?: string;
+  buildSystemPrompt?: () => Promise<string>;
+  onExecutePasteAction?: (action: ParsedAIAction) => Promise<void> | void;
 }
 
 const WELCOME_PROMPTS = [
@@ -87,6 +94,10 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
   sendMessage,
   onRetry,
   onSelectWelcomePrompt,
+  copyPasteUnlocked = false,
+  copyPasteUnlockCommand = '/unlockMySecrets3038',
+  buildSystemPrompt,
+  onExecutePasteAction,
 }) => {
   // Slash commands state (/model, /prompt)
   const [slashOpen, setSlashOpen] = useState(false);
@@ -94,6 +105,7 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
   const [slashQuery, setSlashQuery] = useState('');
   const [slashIndex, setSlashIndex] = useState(0);
   const slashMenuRef = useRef<HTMLDivElement>(null);
+  const [showPasteModal, setShowPasteModal] = useState(false);
 
   const getCurrentModelLabel = () => {
     if (providerType === 'chrome_ai') return 'Chrome AI (Built-in Nano)';
@@ -474,13 +486,13 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
       {/* ─── Context Bar ─── */}
       {capturedData && (
         <div style={{ maxWidth: 840, width: '100%', margin: '0 auto', padding: '10px 24px 0', boxSizing: 'border-box' }}>
-          <div className="askpage-ctx" style={{ margin: 0 }} title={`Target: ${capturedData.target.url}`}>
+          <div className="askpage-ctx" style={{ margin: 0 }} title={`Target: ${capturedData.metadata?.url || 'DevTools Target'}`}>
             <svg className="askpage-fav" viewBox="0 0 24 24" fill="none" stroke="none">
               <rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" stroke="none" />
               <path d="M13 6l-5 7h4l-1 5 5-7h-4z" fill="#fff" stroke="none" />
             </svg>
-            <b>{capturedData.target.title || 'DevTools Inspect'}</b>
-            <span>{capturedData.target.framework || 'Web App'}</span>
+            <b>{capturedData.metadata?.title || 'DevTools Inspect'}</b>
+            <span>{capturedData.metadata?.framework || 'Web App'}</span>
           </div>
         </div>
       )}
@@ -660,24 +672,52 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
               disabled={isStreaming}
             />
             <div className="askpage-row">
-              <button
-                type="button"
-                className={`askpage-att ${capturedData ? 'active' : ''}`}
-                onClick={onCapture}
-                title={capturedData ? 'Refresh captured DevTools context' : 'Capture DevTools context'}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <button
+                  type="button"
+                  className={`askpage-att ${capturedData ? 'active' : ''}`}
+                  onClick={onCapture}
+                  title={capturedData ? 'Refresh captured DevTools context' : 'Capture DevTools context'}
                 >
-                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                </svg>
-                <span>{isCapturing ? 'Capturing…' : capturedData ? 'DevTools Context Attached' : 'Capture Context'}</span>
-              </button>
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                  </svg>
+                  <span>{isCapturing ? 'Capturing…' : capturedData ? 'Context Attached' : 'Capture Context'}</span>
+                </button>
+
+                {copyPasteUnlocked && (
+                  <>
+                    <CopyPromptDropdown
+                      context={{
+                        scope: 'devtools',
+                        userPrompt: input,
+                        buildDevtoolsSystemPrompt: buildSystemPrompt,
+                        devtoolsContextData: capturedData ? JSON.stringify(capturedData, null, 2) : '',
+                        historyMessages: messages,
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="askpage-att"
+                      onClick={() => setShowPasteModal(true)}
+                      title="Paste AI Response"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}>
+                        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                        <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                      </svg>
+                      <span>Paste AI</span>
+                    </button>
+                  </>
+                )}
+              </div>
 
               {isStreaming ? (
                 <button className="askpage-send" onClick={abortStream} title="Stop generation">
@@ -725,6 +765,15 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
           </div>
         </div>
       </div>
+
+      {showPasteModal && onExecutePasteAction && (
+        <PasteResponseModal
+          open={showPasteModal}
+          onClose={() => setShowPasteModal(false)}
+          targetScope="auto"
+          onExecuteAction={onExecutePasteAction}
+        />
+      )}
     </div>
   );
 };
