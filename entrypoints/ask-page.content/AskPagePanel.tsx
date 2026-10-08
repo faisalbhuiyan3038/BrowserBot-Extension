@@ -741,6 +741,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     setSlashMode('root');
     setSlashQuery('');
     setSlashIndex(0);
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   const openSlash = (mode: SlashMode = 'root') => {
@@ -897,21 +898,63 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     slashMenuRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
   }, [slashIndex, slashOpen]);
 
+  // Global Escape key listener to close slash menu
+  useEffect(() => {
+    if (!slashOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (slashMode !== 'root') {
+          setSlashMode('root');
+          setSlashQuery('');
+          setSlashIndex(0);
+        } else {
+          closeSlash();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [slashOpen, slashMode]);
+
+  // ─── Abort streaming ────────────────────────────────
+  const abortStream = () => {
+    if (activeRequestIdRef.current) {
+      browser.runtime.sendMessage({
+        type: 'ASK_PAGE_CHAT_ABORT',
+        sessionId: activeRequestIdRef.current
+      }).catch(() => {});
+    }
+    setIsStreaming(false);
+    streamingContentRef.current = '';
+    streamingThinkingRef.current = '';
+    setThinkingContent('');
+  };
+
   // ─── Chat history ──────────────────────────────────
   const startNewChat = () => {
+    abortStream();
+    activeRequestIdRef.current = '';
+    setSlashOpen(false);
+    setInput('');
     setMessages([]);
     setActiveConversationId(null);
-    streamingContentRef.current = '';
     setShowHistory(false);
     if (persistChat) {
       browser.runtime.sendMessage({ type: 'CLEAR_CHAT' }).catch(() => {});
     }
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   const loadConversation = (conv: Conversation) => {
+    abortStream();
+    activeRequestIdRef.current = '';
+    setSlashOpen(false);
     setMessages(conv.messages);
     setActiveConversationId(conv.id);
     setShowHistory(false);
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   const deleteConversation = async (id: string) => {
@@ -930,12 +973,16 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
 
   // ─── Clear current conversation ─────────────────────
   const clearConversation = () => {
+    abortStream();
+    activeRequestIdRef.current = '';
+    setSlashOpen(false);
+    setInput('');
     setMessages([]);
     setActiveConversationId(null);
-    streamingContentRef.current = '';
     if (persistChat) {
       browser.runtime.sendMessage({ type: 'CLEAR_CHAT' }).catch(() => {});
     }
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   // ─── Render markdown safely ─────────────────────────
@@ -951,18 +998,6 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     } catch {
       return content;
     }
-  };
-
-  // ─── Abort streaming ────────────────────────────────
-  const abortStream = () => {
-    browser.runtime.sendMessage({
-      type: 'ASK_PAGE_CHAT_ABORT',
-      sessionId: activeRequestIdRef.current
-    }).catch(() => {});
-    setIsStreaming(false);
-    streamingContentRef.current = '';
-    streamingThinkingRef.current = '';
-    setThinkingContent('');
   };
 
   // ─── Format date helper ─────────────────────────────
@@ -1131,7 +1166,9 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
             </button>
             {isStreaming ? (
               <button className="askpage-send" onClick={abortStream} title="Stop" aria-label="Stop">
-                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="5" width="14" height="14" rx="2" stroke="none" /></svg>
+                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style={{ fill: 'currentColor' }}>
+                  <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none" style={{ fill: 'currentColor' }} />
+                </svg>
               </button>
             ) : (
               <button

@@ -287,8 +287,7 @@ export default defineBackground(() => {
     const tabId = sender.tab?.id;
     const isExtensionPage = !tabId || Boolean(
       sender.url?.startsWith('chrome-extension://') ||
-      sender.url?.startsWith('moz-extension://') ||
-      sender.id === browser.runtime.id
+      sender.url?.startsWith('moz-extension://')
     );
     if (!tabId && !isExtensionPage) return;
 
@@ -308,8 +307,9 @@ export default defineBackground(() => {
 
     const abortListener = (msg: any, abortSender: any) => {
       if (msg.type === 'ASK_PAGE_CHAT_ABORT') {
-        if (isExtensionPage && msg.sessionId === message.sessionId) abortController.abort();
-        else if (!isExtensionPage && abortSender.tab?.id === tabId) abortController.abort();
+        if (msg.sessionId === message.sessionId || (tabId && abortSender.tab?.id === tabId)) {
+          abortController.abort();
+        }
       }
     };
     browser.runtime.onMessage.addListener(abortListener);
@@ -317,10 +317,11 @@ export default defineBackground(() => {
     const dispatchChunk = (payload: any) => {
       // Don't dispatch if this stream was aborted
       if (abortController.signal.aborted) return;
+      if (tabId) {
+        browser.tabs.sendMessage(tabId, payload).catch(() => {});
+      }
       if (isExtensionPage) {
         browser.runtime.sendMessage(payload).catch(() => {});
-      } else if (tabId) {
-        browser.tabs.sendMessage(tabId, payload).catch(() => {});
       }
     };
 

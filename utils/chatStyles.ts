@@ -303,12 +303,35 @@ textarea:focus-visible { outline: 0; }
 }
 .askpage-resize-handle:hover { background: var(--ac); opacity: .35; }
 
+.devtools-chat-panel {
+  position: relative !important;
+  right: auto !important;
+  bottom: auto !important;
+  top: auto !important;
+  left: auto !important;
+  width: auto !important;
+  max-width: none !important;
+  height: 100% !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  animation: none !important;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--pbg);
+}
+
 /* ─── Header — matches prototype header/.brand/.acts ─── */
 .askpage-header {
   position: relative;
   display: flex; justify-content: space-between; align-items: center;
   padding: 12px 14px;
   flex-shrink: 0;
+  background: var(--pbg);
+  z-index: 5;
 }
 .askpage-header::before {
   content: ""; position: absolute; top: 5px; left: 50%;
@@ -554,7 +577,7 @@ textarea:focus-visible { outline: 0; }
 .askpage-retry:active { transform: translate(2px,2px); box-shadow: none; }
 
 /* ─── Footer composer — matches prototype footer/.cmp/.row/.att/.send ─── */
-.askpage-footer { padding: 10px 14px 14px; flex-shrink: 0; }
+.askpage-footer { padding: 10px 14px 14px; flex-shrink: 0; background: var(--pbg); position: relative; z-index: 5; }
 .askpage-cmp {
   position: relative; border: 0;
   border-radius: 14px 18px 12px 18px / 18px 12px 18px 14px;
@@ -598,6 +621,7 @@ textarea:focus-visible { outline: 0; }
   transition: border-color .15s;
 }
 .askpage-send svg { width: 16px; height: 16px; position: relative; z-index: 1; }
+.askpage-send svg rect { fill: currentColor !important; stroke: none !important; }
 .askpage-send:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
 .askpage-send:active:not(:disabled) { transform: translate(2px,2px); box-shadow: none; }
 .askpage-send:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }

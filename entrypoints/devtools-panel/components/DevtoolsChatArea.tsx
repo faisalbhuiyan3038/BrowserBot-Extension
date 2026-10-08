@@ -165,6 +165,7 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
     setSlashMode('root');
     setSlashQuery('');
     setSlashIndex(0);
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   const openSlash = (mode: SlashMode = 'root') => {
@@ -320,9 +321,29 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
     slashMenuRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
   }, [slashIndex, slashOpen]);
 
+  // Global Escape key listener to close slash menu
+  useEffect(() => {
+    if (!slashOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (slashMode !== 'root') {
+          setSlashMode('root');
+          setSlashQuery('');
+          setSlashIndex(0);
+        } else {
+          closeSlash();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [slashOpen, slashMode]);
+
   return (
     <div
-      className="askpage-panel"
+      className="devtools-chat-panel askpage-panel"
       style={{
         flex: 1,
         display: 'flex',
@@ -331,7 +352,7 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
         background: 'var(--pbg)',
         color: 'var(--fg)',
         overflow: 'hidden',
-        width: 'auto',
+        width: '100%',
         maxWidth: 'none',
         height: '100%',
         borderRadius: 0,
@@ -408,7 +429,16 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
       )}
 
       {/* ─── Header matching Ask Page ─── */}
-      <div className="askpage-header">
+      <div
+        className="askpage-header"
+        style={{
+          background: 'var(--pbg)',
+          zIndex: 10,
+          borderBottom: '1.5px solid var(--bd)',
+          padding: '12px 24px',
+          flexShrink: 0,
+        }}
+      >
         <div className="askpage-brand">
           <img
             src={iconUrl}
@@ -443,231 +473,256 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
 
       {/* ─── Context Bar ─── */}
       {capturedData && (
-        <div className="askpage-ctx" title={`Target: ${capturedData.target.url}`}>
-          <svg className="askpage-fav" viewBox="0 0 24 24" fill="none" stroke="none">
-            <rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" stroke="none" />
-            <path d="M13 6l-5 7h4l-1 5 5-7h-4z" fill="#fff" stroke="none" />
-          </svg>
-          <b>{capturedData.target.title || 'DevTools Inspect'}</b>
-          <span>{capturedData.target.framework || 'Web App'}</span>
+        <div style={{ maxWidth: 840, width: '100%', margin: '0 auto', padding: '10px 24px 0', boxSizing: 'border-box' }}>
+          <div className="askpage-ctx" style={{ margin: 0 }} title={`Target: ${capturedData.target.url}`}>
+            <svg className="askpage-fav" viewBox="0 0 24 24" fill="none" stroke="none">
+              <rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" stroke="none" />
+              <path d="M13 6l-5 7h4l-1 5 5-7h-4z" fill="#fff" stroke="none" />
+            </svg>
+            <b>{capturedData.target.title || 'DevTools Inspect'}</b>
+            <span>{capturedData.target.framework || 'Web App'}</span>
+          </div>
         </div>
       )}
 
       {/* ─── Messages list (Ruled Notebook Background) ─── */}
-      <div className="askpage-messages" ref={messagesContainerRef}>
-        {messages.length === 0 ? (
-          <div className="askpage-welcome">
-            <img src={iconUrl} className="askpage-welcome-logo askpage-logo" alt="BrowserBot" />
-            <h2>Hi, I'm BrowserBot Debugger</h2>
-            <p>I have live access to your console logs, network requests, DOM elements, and performance metrics.</p>
-            <span className="askpage-welcome-pick">
-              try one of these
-              <svg viewBox="0 0 40 30">
-                <path d="M4 4c14 0 26 6 28 20M32 24l-6-5M32 24l5-6" />
-              </svg>
-            </span>
-            <div className="askpage-welcome-prompts">
-              {WELCOME_PROMPTS.map((promptText, idx) => (
-                <button
-                  key={idx}
-                  className="askpage-welcome-prompt-btn"
-                  onClick={() => onSelectWelcomePrompt(promptText)}
-                >
-                  {promptText}
-                </button>
-              ))}
+      <div className="askpage-messages" ref={messagesContainerRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 24px' }}>
+        <div style={{ maxWidth: 840, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {messages.length === 0 ? (
+            <div className="askpage-welcome" style={{ width: '100%', boxSizing: 'border-box' }}>
+              <img src={iconUrl} className="askpage-welcome-logo askpage-logo" alt="BrowserBot" />
+              <h2>Hi, I'm BrowserBot Debugger</h2>
+              <p>I have live access to your console logs, network requests, DOM elements, and performance metrics.</p>
+              <span className="askpage-welcome-pick">
+                try one of these
+                <svg viewBox="0 0 40 30">
+                  <path d="M4 4c14 0 26 6 28 20M32 24l-6-5M32 24l5-6" />
+                </svg>
+              </span>
+              <div
+                className="askpage-welcome-prompts"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                  gap: '12px',
+                  width: '100%',
+                  marginTop: '10px',
+                }}
+              >
+                {WELCOME_PROMPTS.map((promptText, idx) => (
+                  <button
+                    key={idx}
+                    className="askpage-welcome-prompt-btn"
+                    style={{ margin: 0, height: '100%', display: 'flex', alignItems: 'center' }}
+                    onClick={() => onSelectWelcomePrompt(promptText)}
+                  >
+                    {promptText}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        ) : (
-          messages.map((msg, i) => {
-            const isLastMessage = i === messages.length - 1;
-            const isCurrentlyStreaming = isStreaming && isLastMessage && msg.role === 'assistant';
-            const showLiveThinking = isCurrentlyStreaming && Boolean(thinkingContent);
+          ) : (
+            messages.map((msg, i) => {
+              const isLastMessage = i === messages.length - 1;
+              const isCurrentlyStreaming = isStreaming && isLastMessage && msg.role === 'assistant';
+              const showLiveThinking = isCurrentlyStreaming && Boolean(thinkingContent);
 
-            if (msg.role === 'user') {
-              return (
-                <div key={i} className="askpage-m user">
-                  <div className="askpage-b">{msg.content}</div>
-                </div>
-              );
-            }
+              if (msg.role === 'user') {
+                return (
+                  <div key={i} className="askpage-m user">
+                    <div className="askpage-b">{msg.content}</div>
+                  </div>
+                );
+              }
 
-            if (msg.role === 'error') {
+              if (msg.role === 'error') {
+                return (
+                  <div key={i} className="askpage-err" role="alert">
+                    <svg viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M12 7.5v5M12 16h.01" />
+                    </svg>
+                    <div>
+                      <b>Request Error</b>
+                      <p>{msg.content}</p>
+                      <button className="askpage-retry" onClick={onRetry}>
+                        Retry
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Assistant response
+              const hasThinking = Boolean(showLiveThinking ? thinkingContent : msg.thinking);
+              const hasContent = Boolean(msg.content && msg.content.trim());
+
               return (
-                <div key={i} className="askpage-err" role="alert">
-                  <svg viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="9" />
-                    <path d="M12 7.5v5M12 16h.01" />
+                <div key={i} className="askpage-m ai">
+                  <svg className="askpage-av" viewBox="0 0 24 24" fill="none" stroke="none">
+                    <rect width="24" height="24" rx="7" fill="currentColor" stroke="none" />
+                    <path
+                      d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z"
+                      fill="#fff"
+                      stroke="none"
+                    />
+                    <circle cx="10" cy="11" r="1.1" fill="currentColor" stroke="none" />
+                    <circle cx="14" cy="11" r="1.1" fill="currentColor" stroke="none" />
                   </svg>
-                  <div>
-                    <b>Request Error</b>
-                    <p>{msg.content}</p>
-                    <button className="askpage-retry" onClick={onRetry}>
-                      Retry
-                    </button>
+                  <div className="askpage-ans">
+                    {hasThinking && (
+                      <details className="askpage-thinking-block" open={showLiveThinking ? thinkingExpanded : undefined}>
+                        <summary
+                          className="askpage-thinking-summary"
+                          onClick={
+                            showLiveThinking
+                              ? e => {
+                                  e.preventDefault();
+                                  setThinkingExpanded(!thinkingExpanded);
+                                }
+                              : undefined
+                          }
+                        >
+                          {showLiveThinking ? 'Thinking…' : 'Thinking process'}
+                        </summary>
+                        <div
+                          className="askpage-thinking-content"
+                          dangerouslySetInnerHTML={{
+                            __html: renderMarkdown((showLiveThinking ? thinkingContent : msg.thinking) as string),
+                          }}
+                        />
+                      </details>
+                    )}
+                    {hasContent ? (
+                      <div
+                        className="askpage-b"
+                        dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                      />
+                    ) : isCurrentlyStreaming ? (
+                      <div className="askpage-b askpage-dots">
+                        <svg className="askpage-scr" viewBox="0 0 64 16">
+                          <path pathLength={1} d="M2 8q5-12 10 0t10 0 10 0 10 0 10 0 10 0" />
+                        </svg>
+                        <span>Thinking…</span>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               );
-            }
-
-            // Assistant response
-            const hasThinking = Boolean(showLiveThinking ? thinkingContent : msg.thinking);
-            const hasContent = Boolean(msg.content && msg.content.trim());
-
-            return (
-              <div key={i} className="askpage-m ai">
-                <svg className="askpage-av" viewBox="0 0 24 24" fill="none" stroke="none">
-                  <rect width="24" height="24" rx="7" fill="currentColor" stroke="none" />
-                  <path
-                    d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z"
-                    fill="#fff"
-                    stroke="none"
-                  />
-                  <circle cx="10" cy="11" r="1.1" fill="currentColor" stroke="none" />
-                  <circle cx="14" cy="11" r="1.1" fill="currentColor" stroke="none" />
-                </svg>
-                <div className="askpage-ans">
-                  {hasThinking && (
-                    <details className="askpage-thinking-block" open={showLiveThinking ? thinkingExpanded : undefined}>
-                      <summary
-                        className="askpage-thinking-summary"
-                        onClick={
-                          showLiveThinking
-                            ? e => {
-                                e.preventDefault();
-                                setThinkingExpanded(!thinkingExpanded);
-                              }
-                            : undefined
-                        }
-                      >
-                        {showLiveThinking ? 'Thinking…' : 'Thinking process'}
-                      </summary>
-                      <div
-                        className="askpage-thinking-content"
-                        dangerouslySetInnerHTML={{
-                          __html: renderMarkdown((showLiveThinking ? thinkingContent : msg.thinking) as string),
-                        }}
-                      />
-                    </details>
-                  )}
-                  {hasContent ? (
-                    <div
-                      className="askpage-b"
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
-                    />
-                  ) : isCurrentlyStreaming ? (
-                    <div className="askpage-b askpage-dots">
-                      <svg className="askpage-scr" viewBox="0 0 64 16">
-                        <path pathLength={1} d="M2 8q5-12 10 0t10 0 10 0 10 0 10 0 10 0" />
-                      </svg>
-                      <span>Thinking…</span>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            );
-          })
-        )}
+            })
+          )}
+        </div>
       </div>
 
       {/* ─── Footer Composer ─── */}
-      <div className="askpage-footer">
-        <div className="askpage-cmp">
-          <div className="askpage-context-pills" style={{ marginBottom: 4 }}>
-            {capturedData && (
-              <span className="askpage-pill active" title="DevTools Context Attached">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                DevTools Context
-              </span>
-            )}
-            <span
-              className="askpage-pill model"
-              title={`Model: ${getCurrentModelLabel()} — type /model to switch`}
-              onClick={() => openSlash('model')}
-              style={{ cursor: 'pointer' }}
-            >
-              {getCurrentModelShort()}
-            </span>
-          </div>
-
-          <textarea
-            ref={inputRef}
-            className="askpage-input"
-            value={input}
-            onChange={e => {
-              setInput(e.target.value);
-              detectSlash(e.target.value, e.target.selectionStart ?? e.target.value.length);
-              e.target.style.height = 'auto';
-              e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
-            }}
-            onKeyDown={onTextareaKeyDown}
-            placeholder="Ask about this page or DevTools data… (type / for commands)"
-            rows={1}
-            disabled={isStreaming}
-          />
-          <div className="askpage-row">
-            <button
-              type="button"
-              className={`askpage-att ${capturedData ? 'active' : ''}`}
-              onClick={onCapture}
-              title={capturedData ? 'Refresh captured DevTools context' : 'Capture DevTools context'}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+      <div
+        className="askpage-footer"
+        style={{
+          background: 'var(--pbg)',
+          borderTop: '1.5px solid var(--bd)',
+          padding: '12px 24px 16px',
+          flexShrink: 0,
+          zIndex: 10,
+        }}
+      >
+        <div style={{ maxWidth: 840, width: '100%', margin: '0 auto' }}>
+          <div className="askpage-cmp">
+            <div className="askpage-context-pills" style={{ marginBottom: 4 }}>
+              {capturedData && (
+                <span className="askpage-pill active" title="DevTools Context Attached">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                  DevTools Context
+                </span>
+              )}
+              <span
+                className="askpage-pill model"
+                title={`Model: ${getCurrentModelLabel()} — type /model to switch`}
+                onClick={() => openSlash('model')}
+                style={{ cursor: 'pointer' }}
               >
-                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-              </svg>
-              <span>{isCapturing ? 'Capturing…' : capturedData ? 'DevTools Context Attached' : 'Capture Context'}</span>
-            </button>
+                {getCurrentModelShort()}
+              </span>
+            </div>
 
-            {isStreaming ? (
-              <button className="askpage-send" onClick={abortStream} title="Stop generation">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="5" y="5" width="14" height="14" rx="2" />
-                </svg>
-              </button>
-            ) : (
+            <textarea
+              ref={inputRef}
+              className="askpage-input"
+              value={input}
+              onChange={e => {
+                setInput(e.target.value);
+                detectSlash(e.target.value, e.target.selectionStart ?? e.target.value.length);
+                e.target.style.height = 'auto';
+                e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+              }}
+              onKeyDown={onTextareaKeyDown}
+              placeholder="Ask about this page or DevTools data… (type / for commands)"
+              rows={1}
+              disabled={isStreaming}
+            />
+            <div className="askpage-row">
               <button
-                className="askpage-send"
-                onClick={() => { closeSlash(); sendMessage(); }}
-                disabled={!input.trim()}
-                title="Send message"
+                type="button"
+                className={`askpage-att ${capturedData ? 'active' : ''}`}
+                onClick={onCapture}
+                title={capturedData ? 'Refresh captured DevTools context' : 'Capture DevTools context'}
               >
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="2.2"
+                  strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
-                  <path d="M12 19V5M5 12l7-7 7 7" />
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
                 </svg>
+                <span>{isCapturing ? 'Capturing…' : capturedData ? 'DevTools Context Attached' : 'Capture Context'}</span>
               </button>
+
+              {isStreaming ? (
+                <button className="askpage-send" onClick={abortStream} title="Stop generation">
+                  <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style={{ fill: 'currentColor' }}>
+                    <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none" style={{ fill: 'currentColor' }} />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  className="askpage-send"
+                  onClick={() => { closeSlash(); sendMessage(); }}
+                  disabled={!input.trim()}
+                  title="Send message"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 19V5M5 12l7-7 7 7" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            {slashOpen && (
+              <SlashMenu
+                menuRef={slashMenuRef}
+                slashMode={slashMode}
+                slashOptions={slashOptions}
+                slashIndex={slashIndex}
+                currentModelShort={getCurrentModelShort()}
+                onSetSlashIndex={setSlashIndex}
+                onBackToRoot={() => {
+                  setSlashMode('root');
+                  setSlashQuery('');
+                  setSlashIndex(0);
+                }}
+                onSelectOption={selectSlashOption}
+              />
             )}
           </div>
-
-          {slashOpen && (
-            <SlashMenu
-              menuRef={slashMenuRef}
-              slashMode={slashMode}
-              slashOptions={slashOptions}
-              slashIndex={slashIndex}
-              currentModelShort={getCurrentModelShort()}
-              onSetSlashIndex={setSlashIndex}
-              onBackToRoot={() => {
-                setSlashMode('root');
-                setSlashQuery('');
-                setSlashIndex(0);
-              }}
-              onSelectOption={selectSlashOption}
-            />
-          )}
         </div>
       </div>
     </div>

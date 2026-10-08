@@ -1,5 +1,6 @@
 import React from 'react';
 import { getDomain } from '../types';
+import iconUrl from '../../../assets/icon-alt.png';
 
 interface ChatHeaderProps {
   pageTitle: string;
@@ -26,12 +27,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
     <>
       <div className="askpage-header">
         <div className="askpage-brand">
-          <svg className="askpage-logo" viewBox="0 0 24 24" fill="none" stroke="none">
-            <rect width="24" height="24" rx="7" fill="currentColor" stroke="none" />
-            <path d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z" fill="#fff" stroke="none" />
-            <circle cx="10" cy="11" r="1.1" fill="currentColor" stroke="none" />
-            <circle cx="14" cy="11" r="1.1" fill="currentColor" stroke="none" />
-          </svg>
+          <img src={iconUrl} alt="BrowserBot" className="askpage-logo" />
           <span className="askpage-header-title"><b>BrowserBot</b></span>
         </div>
         <div className="askpage-acts">

@@ -24,11 +24,18 @@ if (!document.getElementById('rough')) {
 }
 
 // Add base styles for the full screen standalone tab
+document.documentElement.style.width = '100%';
+document.documentElement.style.height = '100%';
+document.documentElement.style.margin = '0';
+document.documentElement.style.padding = '0';
+document.documentElement.style.overflow = 'hidden';
+
+document.body.style.width = '100%';
+document.body.style.height = '100%';
 document.body.style.margin = '0';
 document.body.style.padding = '0';
-document.body.style.width = '100vw';
-document.body.style.height = '100vh';
 document.body.style.overflow = 'hidden';
+document.body.style.boxSizing = 'border-box';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
