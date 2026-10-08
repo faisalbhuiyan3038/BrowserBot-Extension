@@ -105,6 +105,10 @@ export interface StorageState {
 
   // Organize Bookmarks config
   bookmarkOrganizePrompt: string;     // custom system prompt for bookmark organizing
+
+  // Opt-in Copy-Paste AI config (hidden by default)
+  copyPasteUnlocked: boolean;
+  copyPasteUnlockCommand: string;
 }
 
 export const DEFAULT_TAB_GROUP_PROMPT: SystemPrompt = {
@@ -249,6 +253,10 @@ export const defaultState: StorageState = {
 
   // Organize Bookmarks defaults
   bookmarkOrganizePrompt: DEFAULT_BOOKMARK_ORGANIZE_PROMPT,
+
+  // Opt-in Copy-Paste AI defaults (hidden by default)
+  copyPasteUnlocked: false,
+  copyPasteUnlockCommand: '/unlockMySecrets3038',
 };
 
 export const AppStorage = {
@@ -273,11 +281,20 @@ export const AppStorage = {
     if (!merged.bookmarkOrganizePrompt) {
       merged.bookmarkOrganizePrompt = DEFAULT_BOOKMARK_ORGANIZE_PROMPT;
     }
+    // Ensure copy-paste defaults exist
+    if (merged.copyPasteUnlocked === undefined) {
+      merged.copyPasteUnlocked = false;
+    }
+    if (!merged.copyPasteUnlockCommand) {
+      merged.copyPasteUnlockCommand = '/unlockMySecrets3038';
+    }
     return merged;
   },
-  set: async (state: Partial<StorageState>) => {
-    const current = await AppStorage.get();
-    await browser.storage.local.set({ appState: { ...current, ...state } });
+  set: (state: Partial<StorageState>): Promise<void> => {
+    return enqueueAppStorage(async () => {
+      const current = await AppStorage.get();
+      await browser.storage.local.set({ appState: { ...current, ...state } });
+    });
   },
   getActiveOpenAIProvider: async (): Promise<OpenAIProvider | undefined> => {
     const state = await AppStorage.get();
@@ -295,16 +312,33 @@ export const AppStorage = {
     const conversations = await ConversationStorage.loadAll();
     return JSON.stringify({ settings: state, conversations }, null, 2);
   },
-  importAll: async (json: string): Promise<void> => {
-    const data = JSON.parse(json);
-    if (data.settings) {
-      await browser.storage.local.set({ appState: { ...defaultState, ...data.settings } });
-    }
-    if (data.conversations && Array.isArray(data.conversations)) {
-      await browser.storage.local.set({ askPageConversations: data.conversations });
-    }
+  importAll: (json: string): Promise<void> => {
+    return enqueueAppStorage(async () => {
+      const data = JSON.parse(json);
+      if (data.settings) {
+        await browser.storage.local.set({ appState: { ...defaultState, ...data.settings } });
+      }
+      if (data.conversations && Array.isArray(data.conversations)) {
+        await browser.storage.local.set({ askPageConversations: data.conversations });
+      }
+    });
   }
 };
+
+// ─── Sequential async queues for atomic storage mutations ───────
+let appStorageQueue = Promise.resolve();
+function enqueueAppStorage<T>(task: () => Promise<T>): Promise<T> {
+  const next = appStorageQueue.then(task, task);
+  appStorageQueue = next.then(() => {}, () => {});
+  return next;
+}
+
+let conversationStorageQueue = Promise.resolve();
+function enqueueConversationStorage<T>(task: () => Promise<T>): Promise<T> {
+  const next = conversationStorageQueue.then(task, task);
+  conversationStorageQueue = next.then(() => {}, () => {});
+  return next;
+}
 
 // ─── Conversation Storage (separate key) ────────────────────
 export const ConversationStorage = {
@@ -313,45 +347,76 @@ export const ConversationStorage = {
     return (val.askPageConversations as Conversation[]) || [];
   },
 
-  save: async (conversation: Conversation): Promise<void> => {
-    const all = await ConversationStorage.loadAll();
-    const idx = all.findIndex(c => c.id === conversation.id);
-    if (idx >= 0) {
-      all[idx] = conversation;
-    } else {
-      all.unshift(conversation);
-    }
+  save: (conversation: Conversation): Promise<void> => {
+    return enqueueConversationStorage(async () => {
+      const all = await ConversationStorage.loadAll();
+      const idx = all.findIndex(c => c.id === conversation.id);
+      if (idx >= 0) {
+        all[idx] = conversation;
+      } else {
+        all.unshift(conversation);
+      }
 
-    // Enforce max limit
-    const state = await AppStorage.get();
-    const maxConvs = state.askPageMaxConversations || 100;
-    const trimmed = all.slice(0, maxConvs);
+      // Enforce max limit
+      const state = await AppStorage.get();
+      const maxConvs = state.askPageMaxConversations || 100;
+      const trimmed = all.slice(0, maxConvs);
 
-    await browser.storage.local.set({ askPageConversations: trimmed });
+      await browser.storage.local.set({ askPageConversations: trimmed });
+    });
   },
 
-  delete: async (id: string): Promise<void> => {
-    const all = await ConversationStorage.loadAll();
-    const filtered = all.filter(c => c.id !== id);
-    await browser.storage.local.set({ askPageConversations: filtered });
+  delete: (id: string): Promise<void> => {
+    return enqueueConversationStorage(async () => {
+      const all = await ConversationStorage.loadAll();
+      const filtered = all.filter(c => c.id !== id);
+      await browser.storage.local.set({ askPageConversations: filtered });
+    });
   },
 
-  clearOld: async (days: number): Promise<number> => {
-    if (days <= 0) return 0;
-    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-    const all = await ConversationStorage.loadAll();
-    const kept = all.filter(c => c.updatedAt >= cutoff);
-    const removed = all.length - kept.length;
-    if (removed > 0) {
-      await browser.storage.local.set({ askPageConversations: kept });
-    }
-    return removed;
+  clearOld: (days: number): Promise<number> => {
+    return enqueueConversationStorage(async () => {
+      if (days <= 0) return 0;
+      const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+      const all = await ConversationStorage.loadAll();
+      const kept = all.filter(c => c.updatedAt >= cutoff);
+      const removed = all.length - kept.length;
+      if (removed > 0) {
+        await browser.storage.local.set({ askPageConversations: kept });
+      }
+      return removed;
+    });
   }
 };
 
-export function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
-}
+// ─── Session Chat Storage (Firefox MV2 fallback wrapper) ─────
+export const SessionChatStorage = {
+  saveChat: async (messages: any[]): Promise<void> => {
+    if (browser.storage?.session) {
+      await browser.storage.session.set({ askPageChat: messages });
+    } else {
+      await browser.storage.local.set({ _session_askPageChat: messages });
+    }
+  },
+
+  loadChat: async (): Promise<any[]> => {
+    if (browser.storage?.session) {
+      const data = await browser.storage.session.get('askPageChat');
+      return (data as any)?.askPageChat || [];
+    } else {
+      const data = await browser.storage.local.get('_session_askPageChat');
+      return (data as any)?._session_askPageChat || [];
+    }
+  },
+
+  clearChat: async (): Promise<void> => {
+    if (browser.storage?.session) {
+      await browser.storage.session.remove('askPageChat');
+    } else {
+      await browser.storage.local.remove('_session_askPageChat');
+    }
+  }
+};
 
 export function generateUUID(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -366,4 +431,9 @@ export function generateUUID(): string {
     return v.toString(16);
   });
 }
+
+/**
+ * @deprecated Use `generateUUID()` directly for standard RFC4122 v4 identifiers.
+ */
+export const generateId = generateUUID;
 

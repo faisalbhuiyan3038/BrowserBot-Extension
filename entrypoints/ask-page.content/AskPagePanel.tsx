@@ -1,7 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
-import { AppStorage, SystemPrompt, OpenAIProvider, AIProviderType, ExtractionAlgorithm, Conversation, ChatMsg, generateId, generateUUID } from '../../utils/storage';
+import { AppStorage, SystemPrompt, OpenAIProvider, AIProviderType, ExtractionAlgorithm, Conversation, ChatMsg, generateUUID } from '../../utils/storage';
 import { extractPageContent } from '../../utils/extractor';
+import { AttachedTab, SlashMode, SlashOption, getDomain } from './types';
+import { ChatHeader } from './components/ChatHeader';
+import { HistorySidebar } from './components/HistorySidebar';
+import { TabPickerModal } from './components/TabPickerModal';
+import { SlashMenu } from './components/SlashMenu';
+import { MessageList } from './components/MessageList';
+import { CopyPromptDropdown } from '../../components/CopyPromptDropdown';
+import { PasteResponseModal } from '../../components/PasteResponseModal';
+import type { PromptContext } from '../../utils/copyModules';
+import type { ParsedAIAction } from '../../utils/actionExecutor';
+import { executeTabGroups, executeBookmarkPlan } from '../../utils/actionExecutor';
+import { getBookmarkTree } from '../../utils/bookmarks';
+import type { TabInfo } from '../../utils/ai';
 
 // Hardcoded instruction always appended to Ask Page system prompts
 const MARKDOWN_FORMAT_INSTRUCTION = '\n\nIMPORTANT: Always format your responses using markdown. Use headings, bullet points, code blocks, bold, italic, and other markdown features to make your responses well-structured and readable.';
@@ -12,13 +25,6 @@ interface AskPagePanelProps {
   onClose: () => void;
   onRegisterShow?: (cb: () => void) => void;
   isFullScreen?: boolean;
-}
-
-interface AttachedTab {
-  id: number;
-  title: string;
-  url: string;
-  content: string;
 }
 
 // Configure marked for safe rendering
@@ -37,6 +43,19 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   const [persistChat, setPersistChat] = useState(false);
   const [currentTabAttached, setCurrentTabAttached] = useState(false);
   const [extractionAlgorithm, setExtractionAlgorithm] = useState<ExtractionAlgorithm>(1);
+
+  // Copy-paste manual workflow state
+  const [copyPasteUnlocked, setCopyPasteUnlocked] = useState(false);
+  const [copyPasteUnlockCommand, setCopyPasteUnlockCommand] = useState('/unlockMySecrets3038');
+  const [showPasteModal, setShowPasteModal] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToastMessage(msg);
+    toastTimerRef.current = setTimeout(() => setToastMessage(null), 3000);
+  }, []);
 
   // Provider state
   const [providerType, setProviderType] = useState<AIProviderType>('openai');
@@ -66,7 +85,6 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   const [selectedPickerTabs, setSelectedPickerTabs] = useState<number[]>([]);
 
   // ─── Slash-command menu (/model, /prompt, /page, /tab) ───
-  type SlashMode = 'root' | 'model' | 'prompt' | 'tab';
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashMode, setSlashMode] = useState<SlashMode>('root');
   const [slashQuery, setSlashQuery] = useState('');
@@ -128,6 +146,8 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
       setPanelWidth(state.askPagePanelWidth || 420);
       setPersistChat(state.askPagePersistChat || false);
       setExtractionAlgorithm(state.pageExtractionAlgorithm || 1);
+      setCopyPasteUnlocked(state.copyPasteUnlocked ?? false);
+      setCopyPasteUnlockCommand(state.copyPasteUnlockCommand || '/unlockMySecrets3038');
 
       // Load persisted chat if enabled
       if (state.askPagePersistChat) {
@@ -152,6 +172,8 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
         setPanelWidth(state.askPagePanelWidth || 420);
         setPersistChat(state.askPagePersistChat || false);
         setExtractionAlgorithm(state.pageExtractionAlgorithm || 1);
+        if (state.copyPasteUnlocked !== undefined) setCopyPasteUnlocked(state.copyPasteUnlocked);
+        if (state.copyPasteUnlockCommand) setCopyPasteUnlockCommand(state.copyPasteUnlockCommand);
       }
     };
     browser.storage.onChanged.addListener(handleStorageChange);
@@ -195,7 +217,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     const title = firstUserMsg?.content.slice(0, 80) || 'New Chat';
 
     const conversation: Conversation = {
-      id: activeConversationId || generateId(),
+      id: activeConversationId || generateUUID(),
       title,
       createdAt: activeConversationId ? (conversations.find(c => c.id === activeConversationId)?.createdAt || Date.now()) : Date.now(),
       updatedAt: Date.now(),
@@ -281,7 +303,13 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
         streamingContentRef.current = '';
         streamingThinkingRef.current = '';
         setThinkingContent('');
-        setMessages(prev => [...prev, { role: 'error', content: message.error }]);
+        setMessages(prev => {
+          const lastIdx = prev.length - 1;
+          const updated = (lastIdx >= 0 && prev[lastIdx].role === 'assistant' && !prev[lastIdx].content)
+            ? prev.slice(0, lastIdx)
+            : prev;
+          return [...updated, { role: 'error', content: message.error }];
+        });
       } else if (message.type === 'CHAT_UPDATED') {
         // Real-time sync from other tabs
         if (persistChat && message.messages && !isStreaming) {
@@ -350,9 +378,29 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   }, [panelWidth]);
 
   // ─── Send message ───────────────────────────────────
-  const sendMessage = async () => {
-    const text = input.trim();
+  const sendMessage = async (overrideText?: string) => {
+    const text = (overrideText !== undefined ? overrideText : input).trim();
     if (isStreaming || !text) return;
+
+    // Secret unlock / lock command interception
+    const unlockCmd = (copyPasteUnlockCommand || '/unlockMySecrets3038').trim().toLowerCase();
+    if (text.toLowerCase() === unlockCmd) {
+      await AppStorage.set({ copyPasteUnlocked: true });
+      setCopyPasteUnlocked(true);
+      setInput('');
+      closeSlash();
+      showToast('🔓 Copy-Paste AI workflow unlocked!');
+      return;
+    }
+    if (copyPasteUnlocked && (text.toLowerCase() === '/lock' || text.toLowerCase() === '/lockcopypaste')) {
+      await AppStorage.set({ copyPasteUnlocked: false });
+      setCopyPasteUnlocked(false);
+      setInput('');
+      closeSlash();
+      showToast('🔒 Copy-Paste AI workflow locked.');
+      return;
+    }
+
     setSlashOpen(false);
     setSlashMode('root');
     setSlashQuery('');
@@ -407,7 +455,11 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     }
 
     // Add conversation history
-    for (const msg of messages) {
+    const baseMessages = overrideText !== undefined
+      ? messages.filter(m => m.role !== 'error').slice(0, -1)
+      : messages;
+
+    for (const msg of baseMessages) {
       if (msg.role === 'error') continue;
       if (msg.role === 'assistant') {
         const content = msg.content || (msg.thinking ? `[Thinking process: ${msg.thinking}]` : '');
@@ -443,12 +495,18 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     activeRequestIdRef.current = newRequestId;
 
     // Update UI
-    setMessages(prev => [
-      ...prev,
-      { role: 'user', content: text },
-      { role: 'assistant', content: '' }
-    ]);
-    setInput('');
+    setMessages(prev => {
+      const filtered = prev.filter(m => m.role !== 'error');
+      const base = overrideText !== undefined ? filtered.slice(0, -1) : filtered;
+      return [
+        ...base,
+        { role: 'user', content: text },
+        { role: 'assistant', content: '' }
+      ];
+    });
+    if (overrideText === undefined) {
+      setInput('');
+    }
     setIsStreaming(true);
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
@@ -479,6 +537,33 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     e.stopPropagation();
+
+    // Check for secret unlock / lock command before slash selection
+    if (e.key === 'Enter' && !e.shiftKey) {
+      const trimmedInput = input.trim().toLowerCase();
+      const unlockCmd = (copyPasteUnlockCommand || '/unlockMySecrets3038').trim().toLowerCase();
+      if (trimmedInput === unlockCmd) {
+        e.preventDefault();
+        AppStorage.set({ copyPasteUnlocked: true }).then(() => {
+          setCopyPasteUnlocked(true);
+          setInput('');
+          closeSlash();
+          showToast('🔓 Copy-Paste AI workflow unlocked!');
+        });
+        return;
+      }
+      if (copyPasteUnlocked && (trimmedInput === '/lock' || trimmedInput === '/lockcopypaste')) {
+        e.preventDefault();
+        AppStorage.set({ copyPasteUnlocked: false }).then(() => {
+          setCopyPasteUnlocked(false);
+          setInput('');
+          closeSlash();
+          showToast('🔒 Copy-Paste AI workflow locked.');
+        });
+        return;
+      }
+    }
+
     if (slashOpen) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -634,10 +719,6 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   });
 
   // ─── Slash menu helpers ───────────────────────────
-  const getDomain = (url: string) => {
-    try { return new URL(url).hostname; } catch { return url; }
-  };
-
   const getCurrentModelLabel = () => {
     if (providerType === 'openai') {
       const p = openaiProviders.find(pr => pr.id === selectedOpenAIId);
@@ -655,14 +736,6 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     if (providerType === 'ollama') return ollamaModel || 'ollama';
     return 'chrome-ai';
   };
-
-  interface SlashOption {
-    key: string;
-    title: string;
-    desc: string;
-    hint?: string;
-    active?: boolean;
-  }
 
   const getSlashOptions = (): SlashOption[] => {
     const q = slashQuery.toLowerCase();
@@ -739,6 +812,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     setSlashMode('root');
     setSlashQuery('');
     setSlashIndex(0);
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   const openSlash = (mode: SlashMode = 'root') => {
@@ -895,21 +969,63 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     slashMenuRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
   }, [slashIndex, slashOpen]);
 
+  // Global Escape key listener to close slash menu
+  useEffect(() => {
+    if (!slashOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (slashMode !== 'root') {
+          setSlashMode('root');
+          setSlashQuery('');
+          setSlashIndex(0);
+        } else {
+          closeSlash();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [slashOpen, slashMode]);
+
+  // ─── Abort streaming ────────────────────────────────
+  const abortStream = () => {
+    if (activeRequestIdRef.current) {
+      browser.runtime.sendMessage({
+        type: 'ASK_PAGE_CHAT_ABORT',
+        sessionId: activeRequestIdRef.current
+      }).catch(() => {});
+    }
+    setIsStreaming(false);
+    streamingContentRef.current = '';
+    streamingThinkingRef.current = '';
+    setThinkingContent('');
+  };
+
   // ─── Chat history ──────────────────────────────────
   const startNewChat = () => {
+    abortStream();
+    activeRequestIdRef.current = '';
+    setSlashOpen(false);
+    setInput('');
     setMessages([]);
     setActiveConversationId(null);
-    streamingContentRef.current = '';
     setShowHistory(false);
     if (persistChat) {
       browser.runtime.sendMessage({ type: 'CLEAR_CHAT' }).catch(() => {});
     }
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   const loadConversation = (conv: Conversation) => {
+    abortStream();
+    activeRequestIdRef.current = '';
+    setSlashOpen(false);
     setMessages(conv.messages);
     setActiveConversationId(conv.id);
     setShowHistory(false);
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   const deleteConversation = async (id: string) => {
@@ -928,11 +1044,62 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
 
   // ─── Clear current conversation ─────────────────────
   const clearConversation = () => {
+    abortStream();
+    activeRequestIdRef.current = '';
+    setSlashOpen(false);
+    setInput('');
     setMessages([]);
     setActiveConversationId(null);
-    streamingContentRef.current = '';
     if (persistChat) {
       browser.runtime.sendMessage({ type: 'CLEAR_CHAT' }).catch(() => {});
+    }
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  // ─── Handle Paste-back Action ───────────────────────
+  const handlePasteAction = async (action: ParsedAIAction) => {
+    if (action.type === 'chat') {
+      const userText = input.trim();
+      const newMessages: ChatMsg[] = [...messages];
+      if (userText) {
+        newMessages.push({ role: 'user', content: userText });
+        setInput('');
+      }
+      newMessages.push({ role: 'assistant', content: action.content });
+      setMessages(newMessages);
+      if (persistChat) {
+        browser.runtime.sendMessage({ type: 'SAVE_CHAT', messages: newMessages }).catch(() => {});
+      }
+      showToast('✓ AI response added');
+    } else if (action.type === 'tab_groups') {
+      try {
+        const tabs = await browser.tabs.query({ currentWindow: true });
+        const tabsInfo: TabInfo[] = tabs
+          .filter(t => t.id != null && t.url && !t.url.startsWith('chrome://') && !t.url.startsWith('chrome-extension://'))
+          .map(t => ({ id: t.id!, url: t.url!, title: t.title || '' }));
+        const res = await executeTabGroups(action.categories, false, tabsInfo);
+        const newMessages: ChatMsg[] = [
+          ...messages,
+          { role: 'assistant', content: `✓ Organized tabs into **${res.created}** groups (${res.totalTabs} tabs).` }
+        ];
+        setMessages(newMessages);
+        showToast(`✓ Applied ${res.created} tab groups`);
+      } catch (err: any) {
+        showToast(`Error applying tab groups: ${err?.message || err}`);
+      }
+    } else if (action.type === 'bookmarks') {
+      try {
+        const tree = await getBookmarkTree();
+        const res = await executeBookmarkPlan(action.plan, tree.folders, tree.bookmarks);
+        const newMessages: ChatMsg[] = [
+          ...messages,
+          { role: 'assistant', content: `✓ Bookmark plan applied: Created **${res.foldersCreated}** folders, moved **${res.bookmarksMoved}** bookmarks.` }
+        ];
+        setMessages(newMessages);
+        showToast(`✓ Moved ${res.bookmarksMoved} bookmarks`);
+      } catch (err: any) {
+        showToast(`Error applying bookmark plan: ${err?.message || err}`);
+      }
     }
   };
 
@@ -949,18 +1116,6 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
     } catch {
       return content;
     }
-  };
-
-  // ─── Abort streaming ────────────────────────────────
-  const abortStream = () => {
-    browser.runtime.sendMessage({
-      type: 'ASK_PAGE_CHAT_ABORT',
-      sessionId: activeRequestIdRef.current
-    }).catch(() => {});
-    setIsStreaming(false);
-    streamingContentRef.current = '';
-    streamingThinkingRef.current = '';
-    setThinkingContent('');
   };
 
   // ─── Format date helper ─────────────────────────────
@@ -1002,228 +1157,62 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
 
       {/* History sidebar */}
       {showHistory && (
-        <div className="askpage-history-sidebar">
-          <div className="askpage-history-header">
-            <h4>Chat History</h4>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <button className="askpage-history-new" onClick={startNewChat}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 5v14M5 12h14"/>
-                </svg>
-                New
-              </button>
-              <button className="askpage-history-close" onClick={() => setShowHistory(false)} title="Close">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-          <input
-            className="askpage-history-search"
-            placeholder="Search conversations…"
-            value={historySearch}
-            onChange={e => setHistorySearch(e.target.value)}
-          />
-          <div className="askpage-history-list">
-            {filteredConversations.map(conv => (
-              <div
-                key={conv.id}
-                className={`askpage-history-item ${activeConversationId === conv.id ? 'active' : ''}`}
-              >
-                <button className="askpage-history-item-main" onClick={() => loadConversation(conv)}>
-                  <div className="askpage-history-item-title">{conv.title}</div>
-                  <div className="askpage-history-item-meta">
-                    {formatDate(conv.updatedAt)} · {conv.messages.filter(m => m.role === 'user').length} msgs
-                  </div>
-                </button>
-                <button
-                  className="askpage-history-item-delete"
-                  onClick={(e) => { e.stopPropagation(); deleteConversation(conv.id); }}
-                  title="Delete"
-                >×</button>
-              </div>
-            ))}
-            {filteredConversations.length === 0 && (
-              <div className="askpage-history-empty">
-                {historySearch ? 'No matching conversations' : 'No conversations yet'}
-              </div>
-            )}
-          </div>
-        </div>
+        <HistorySidebar
+          conversations={filteredConversations}
+          activeConversationId={activeConversationId}
+          historySearch={historySearch}
+          onSearchChange={setHistorySearch}
+          onStartNewChat={startNewChat}
+          onClose={() => setShowHistory(false)}
+          onLoadConversation={loadConversation}
+          onDeleteConversation={deleteConversation}
+          formatDate={formatDate}
+        />
       )}
 
-      {/* Header — matches prototype: brand + minimal actions */}
-      <div className="askpage-header">
-        <div className="askpage-brand">
-          <svg className="askpage-logo" viewBox="0 0 24 24" fill="none" stroke="none">
-            <rect width="24" height="24" rx="7" fill="currentColor" stroke="none" />
-            <path d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z" fill="#fff" stroke="none" />
-            <circle cx="10" cy="11" r="1.1" fill="currentColor" stroke="none" />
-            <circle cx="14" cy="11" r="1.1" fill="currentColor" stroke="none" />
-          </svg>
-          <span className="askpage-header-title"><b>BrowserBot</b></span>
-        </div>
-        <div className="askpage-acts">
-          <button
-            className={`askpage-header-btn ${showHistory ? 'active' : ''}`}
-            onClick={() => { setShowHistory(!showHistory); if (!showHistory) loadConversations(); }}
-            title="Chat History"
-            aria-label="Chat history"
-          >
-            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5M12 16h.01" /></svg>
-          </button>
-          {messages.length > 0 && (
-            <button className="askpage-header-btn" onClick={clearConversation} title="New conversation" aria-label="New conversation">
-              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
-            </button>
-          )}
-          {!isFullScreen && (
-            <button className="askpage-header-btn" onClick={handleClose} title="Close" aria-label="Close">
-              <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
-            </button>
-          )}
-        </div>
-      </div>
+      {/* Header and Context bar */}
+      <ChatHeader
+        pageTitle={pageTitle}
+        pageUrl={pageUrl}
+        isFullScreen={isFullScreen}
+        showHistory={showHistory}
+        hasMessages={messages.length > 0}
+        onToggleHistory={() => {
+          setShowHistory(!showHistory);
+          if (!showHistory) loadConversations();
+        }}
+        onNewChat={clearConversation}
+        onClose={handleClose}
+      />
 
-      {/* Context bar — matches prototype .ctx: favicon + title + domain */}
-      <div className="askpage-ctx" title={`${pageTitle}\n${pageUrl}`}>
-        <svg className="askpage-fav" viewBox="0 0 24 24" fill="none" stroke="none">
-          <rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" stroke="none" />
-          <path d="M13 6l-5 7h4l-1 5 5-7h-4z" fill="#fff" stroke="none" />
-        </svg>
-        <b>{pageTitle || 'This page'}</b>
-        <span>{getDomain(pageUrl)}</span>
-      </div>
-
-      {/* Chat Messages — lined-paper area, matches prototype #v */}
-      <div className="askpage-messages" ref={messagesContainerRef} onScroll={handleMessagesScroll}>
-        {messages.length === 0 ? (
-          <div className="askpage-welcome">
-            <svg className="askpage-welcome-logo" viewBox="0 0 24 24" fill="none" stroke="none">
-              <rect width="24" height="24" rx="7" fill="currentColor" stroke="none" />
-              <path d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z" fill="#fff" stroke="none" />
-              <circle cx="10" cy="11" r="1.1" fill="currentColor" stroke="none" />
-              <circle cx="14" cy="11" r="1.1" fill="currentColor" stroke="none" />
-            </svg>
-            <h2>Hi, I'm BrowserBot</h2>
-            <p>I can read this page and your selection. Ask me anything about it.</p>
-            <span className="askpage-welcome-pick">
-              try one of these
-              <svg viewBox="0 0 40 30"><path d="M4 4c14 0 26 6 28 20M32 24l-6-5M32 24l5-6" /></svg>
-            </span>
-            <div className="askpage-welcome-prompts">
-              {(quickPrompts.length > 0 ? quickPrompts.slice(0, 4).map(p => ({ id: p.id, label: p.name })) : [
-                { id: 'summarize', label: 'Summarize this page' },
-                { id: 'explain', label: 'Explain the highlighted text' },
-                { id: 'extract', label: 'Extract the checklist' },
-                { id: 'code', label: 'What does this code do?' },
-              ]).map(item => (
-                <button
-                  key={item.id}
-                  className="askpage-welcome-prompt-btn"
-                  onClick={() => {
-                    const found = quickPrompts.find(p => p.id === item.id);
-                    if (found) handleQuickPromptSelect(found.id);
-                    else { setInput(item.label); inputRef.current?.focus(); }
-                  }}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <>
-            {messages.map((msg, i) => {
-              const isLastMessage = i === messages.length - 1;
-              const isCurrentlyStreaming = isStreaming && isLastMessage && msg.role === 'assistant';
-              const showLiveThinking = isCurrentlyStreaming && thinkingContent;
-
-              if (msg.role === 'user') {
-                return (
-                  <div key={i} className="askpage-m user">
-                    <div className="askpage-b">{msg.content}</div>
-                  </div>
-                );
-              }
-
-              if (msg.role === 'error') {
-                return (
-                  <div key={i} className="askpage-err" role="alert">
-                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5M12 16h.01" /></svg>
-                    <div>
-                      <b>Couldn't read this page's content</b>
-                      <p>{msg.content}</p>
-                      <button className="askpage-retry" onClick={() => { const lastUser = [...messages].reverse().find(m => m.role === 'user'); if (lastUser) { setInput(lastUser.content); } }}>Retry</button>
-                    </div>
-                  </div>
-                );
-              }
-
-              // assistant
-              const hasThinking = Boolean(showLiveThinking ? thinkingContent : msg.thinking);
-              const hasContent = Boolean(msg.content && msg.content.trim());
-
-              return (
-                <div key={i} className="askpage-m ai">
-                  <svg className="askpage-av" viewBox="0 0 24 24" fill="none" stroke="none">
-                    <rect width="24" height="24" rx="7" fill="currentColor" stroke="none" />
-                    <path d="M6.5 9.5A2.5 2.5 0 0 1 9 7h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 15 15h-3l-3 2.5V15a2.5 2.5 0 0 1-2.5-2.5z" fill="#fff" stroke="none" />
-                    <circle cx="10" cy="11" r="1.1" fill="currentColor" stroke="none" />
-                    <circle cx="14" cy="11" r="1.1" fill="currentColor" stroke="none" />
-                  </svg>
-                  <div className="askpage-ans">
-                    {hasThinking && (
-                      <details className="askpage-thinking-block" open={showLiveThinking ? thinkingExpanded : undefined}>
-                        <summary
-                          className="askpage-thinking-summary"
-                          onClick={showLiveThinking ? (e) => { e.preventDefault(); setThinkingExpanded(!thinkingExpanded); } : undefined}
-                        >
-                          {showLiveThinking ? 'Thinking…' : 'Thinking process'}
-                        </summary>
-                        <div
-                          className="askpage-thinking-content"
-                          dangerouslySetInnerHTML={{ __html: renderMarkdown((showLiveThinking ? thinkingContent : msg.thinking) as string) }}
-                        />
-                      </details>
-                    )}
-                    {hasContent ? (
-                      <div
-                        className="askpage-b"
-                        dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
-                      />
-                    ) : isCurrentlyStreaming ? (
-                      <div className="askpage-b askpage-dots">
-                        <svg className="askpage-scr" viewBox="0 0 64 16"><path pathLength={1} d="M2 8q5-12 10 0t10 0 10 0 10 0 10 0 10 0" /></svg>
-                        <span>{showLiveThinking ? 'Thinking…' : 'Thinking…'}</span>
-                      </div>
-                    ) : hasThinking ? (
-                      <div className="askpage-b">
-                        <div style={{ opacity: 0.75, fontStyle: 'italic', fontSize: '13px', margin: '4px 0 8px 0' }}>
-                          Thinking process completed without final output.
-                        </div>
-                        <button
-                          className="askpage-welcome-prompt-btn"
-                          style={{ fontSize: '12px', padding: '4px 10px', marginTop: '4px' }}
-                          onClick={() => {
-                            setInput('Please continue and provide your final response based on the thinking above.');
-                            inputRef.current?.focus();
-                          }}
-                        >
-                          Continue Response →
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-
-            <div ref={messagesEndRef} />
-          </>
-        )}
-      </div>
+      {/* Chat Messages */}
+      <MessageList
+        messages={messages}
+        isStreaming={isStreaming}
+        thinkingContent={thinkingContent}
+        thinkingExpanded={thinkingExpanded}
+        onToggleThinking={() => setThinkingExpanded(!thinkingExpanded)}
+        quickPrompts={quickPrompts}
+        onSelectPrompt={handleQuickPromptSelect}
+        onSelectFallbackPrompt={(label) => {
+          setInput(label);
+          inputRef.current?.focus();
+        }}
+        onRetry={() => {
+          const lastUser = [...messages].reverse().find(m => m.role === 'user');
+          if (lastUser) {
+            sendMessage(lastUser.content);
+          }
+        }}
+        onContinueResponse={() => {
+          setInput('Please continue and provide your final response based on the thinking above.');
+          inputRef.current?.focus();
+        }}
+        messagesContainerRef={messagesContainerRef}
+        messagesEndRef={messagesEndRef}
+        onScroll={handleMessagesScroll}
+        renderMarkdown={renderMarkdown}
+      />
 
       {/* Composer — matches prototype footer .cmp */}
       <div className="askpage-footer" onKeyDown={stopPropagation} onKeyUp={stopPropagation} onKeyPress={stopPropagation}>
@@ -1278,24 +1267,60 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
             aria-label="Message BrowserBot"
           />
           <div className="askpage-row">
-            <button
-              className={`askpage-att ${currentTabAttached ? 'active' : ''}`}
-              onClick={() => {
-                // Prototype behavior: toggle page context; slash menu also available via "/"
-                if (!currentTabAttached && attachedTabs.length === 0 && !input.includes('/')) {
-                  openSlash('root');
-                  return;
-                }
-                toggleCurrentTab();
-              }}
-              title={currentTabAttached ? 'Page attached — click to remove (or type / for more options)' : 'Attach page context (or type / for models, prompts, tabs)'}
-            >
-              <svg viewBox="0 0 24 24"><path d="M20 11.5l-8 8a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L9.7 17.2a1.7 1.7 0 0 1-2.4-2.4L15 7" /></svg>
-              Page + selection
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <button
+                className={`askpage-att ${currentTabAttached ? 'active' : ''}`}
+                onClick={() => {
+                  // Prototype behavior: toggle page context; slash menu also available via "/"
+                  if (!currentTabAttached && attachedTabs.length === 0 && !input.includes('/')) {
+                    openSlash('root');
+                    return;
+                  }
+                  toggleCurrentTab();
+                }}
+                title={currentTabAttached ? 'Page attached — click to remove (or type / for more options)' : 'Attach page context (or type / for models, prompts, tabs)'}
+              >
+                <svg viewBox="0 0 24 24"><path d="M20 11.5l-8 8a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L9.7 17.2a1.7 1.7 0 0 1-2.4-2.4L15 7" /></svg>
+                Page + selection
+              </button>
+
+              {copyPasteUnlocked && (
+                <>
+                  <CopyPromptDropdown
+                    context={{
+                      scope: 'ask-page',
+                      userPrompt: input,
+                      systemPrompt: systemPrompt,
+                      pageTitle,
+                      pageUrl,
+                      selectedText: window.getSelection()?.toString() || '',
+                      pageContent: currentTabContent || '',
+                      attachedTabs: getAllAttachedTabs(),
+                      historyMessages: messages,
+                    }}
+                    onCopied={(label) => showToast(`✓ Copied ${label}`)}
+                  />
+                  <button
+                    type="button"
+                    className="askpage-att"
+                    onClick={() => setShowPasteModal(true)}
+                    title="Paste AI Response (ChatGPT / Claude / Gemini)"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}>
+                      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                      <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                    </svg>
+                    Paste AI
+                  </button>
+                </>
+              )}
+            </div>
+
             {isStreaming ? (
               <button className="askpage-send" onClick={abortStream} title="Stop" aria-label="Stop">
-                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="5" width="14" height="14" rx="2" stroke="none" /></svg>
+                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style={{ fill: 'currentColor' }}>
+                  <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none" style={{ fill: 'currentColor' }} />
+                </svg>
               </button>
             ) : (
               <button
@@ -1311,90 +1336,74 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
           </div>
 
           {slashOpen && (
-            <div className="askpage-slash" ref={slashMenuRef} role="listbox" aria-label="Commands">
-              <div className="askpage-slash-head">
-                {slashMode === 'root' ? 'Commands — type to filter, ↑↓ + Enter' : (
-                  <button className="askpage-slash-back" onClick={() => { setSlashMode('root'); setSlashQuery(''); setSlashIndex(0); }}>
-                    ← {slashMode}
-                  </button>
-                )}
-                <span className="askpage-slash-model">{getCurrentModelShort()}</span>
-              </div>
-              {slashOptions.length === 0 && (
-                <div className="askpage-slash-empty">No matches — Esc to close</div>
-              )}
-              {slashOptions.map((opt, idx) => (
-                <button
-                  key={opt.key}
-                  role="option"
-                  aria-selected={idx === slashIndex}
-                  data-active={idx === slashIndex}
-                  className={`askpage-slash-item ${idx === slashIndex ? 'active' : ''}`}
-                  onMouseEnter={() => setSlashIndex(idx)}
-                  onClick={() => selectSlashOption(opt)}
-                >
-                  <span className="askpage-slash-title">{opt.title}{opt.active ? ' ✓' : ''}</span>
-                  <span className="askpage-slash-desc">{opt.desc}</span>
-                  {opt.hint && <span className="askpage-slash-hint">{opt.hint}</span>}
-                </button>
-              ))}
-              <div className="askpage-slash-foot">/model · /prompt · /page · /tab — Esc to close</div>
-            </div>
+            <SlashMenu
+              menuRef={slashMenuRef}
+              slashMode={slashMode}
+              slashOptions={slashOptions}
+              slashIndex={slashIndex}
+              currentModelShort={getCurrentModelShort()}
+              onSetSlashIndex={setSlashIndex}
+              onBackToRoot={() => {
+                setSlashMode('root');
+                setSlashQuery('');
+                setSlashIndex(0);
+              }}
+              onSelectOption={selectSlashOption}
+            />
           )}
         </div>
       </div>
 
       {/* Tab Picker Modal */}
       {showTabPicker && (
-        <div className="askpage-tab-picker-overlay" onClick={() => setShowTabPicker(false)}>
-          <div className="askpage-tab-picker" onClick={e => e.stopPropagation()}>
-            <h4>Add Tab Context</h4>
-            <input
-              className="askpage-tab-picker-search"
-              placeholder="Search tabs…"
-              value={tabSearch}
-              onChange={e => setTabSearch(e.target.value)}
-              autoFocus
-            />
-            <div className="askpage-tab-picker-list">
-              {filteredTabs.map(tab => (
-                <button
-                  key={tab.id}
-                  className={`askpage-tab-picker-item ${selectedPickerTabs.includes(tab.id) ? 'selected' : ''}`}
-                  onClick={() => {
-                    setSelectedPickerTabs(prev =>
-                      prev.includes(tab.id)
-                        ? prev.filter(id => id !== tab.id)
-                        : [...prev, tab.id]
-                    );
-                  }}
-                >
-                  {tab.favIconUrl && (
-                    <img className="askpage-tab-picker-favicon" src={tab.favIconUrl} alt="" />
-                  )}
-                  <div className="askpage-tab-picker-info">
-                    <div className="askpage-tab-picker-title">{tab.title}</div>
-                    <div className="askpage-tab-picker-url">{tab.url}</div>
-                  </div>
-                </button>
-              ))}
-              {filteredTabs.length === 0 && (
-                <div style={{ padding: '16px', textAlign: 'center', color: '#6b7280', fontSize: '13px' }}>
-                  No tabs found
-                </div>
-              )}
-            </div>
-            <div className="askpage-tab-picker-actions">
-              <button className="askpage-tab-picker-btn cancel" onClick={() => setShowTabPicker(false)}>Cancel</button>
-              <button
-                className="askpage-tab-picker-btn confirm"
-                onClick={confirmTabSelection}
-                disabled={selectedPickerTabs.length === 0}
-              >
-                Add {selectedPickerTabs.length > 0 ? `(${selectedPickerTabs.length})` : ''}
-              </button>
-            </div>
-          </div>
+        <TabPickerModal
+          tabSearch={tabSearch}
+          onTabSearchChange={setTabSearch}
+          filteredTabs={filteredTabs}
+          selectedPickerTabs={selectedPickerTabs}
+          onToggleTab={(tabId) => {
+            setSelectedPickerTabs(prev =>
+              prev.includes(tabId)
+                ? prev.filter(id => id !== tabId)
+                : [...prev, tabId]
+            );
+          }}
+          onCancel={() => setShowTabPicker(false)}
+          onConfirm={confirmTabSelection}
+        />
+      )}
+
+      {/* Paste AI Response Modal */}
+      {showPasteModal && (
+        <PasteResponseModal
+          open={showPasteModal}
+          onClose={() => setShowPasteModal(false)}
+          targetScope="auto"
+          onExecuteAction={handlePasteAction}
+        />
+      )}
+
+      {/* Notification Toast */}
+      {toastMessage && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '75px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'var(--bd, #2a2622)',
+            color: 'var(--pbg, #fffbf0)',
+            padding: '8px 16px',
+            borderRadius: '20px',
+            fontSize: '13px',
+            fontWeight: 700,
+            zIndex: 9999,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+            pointerEvents: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {toastMessage}
         </div>
       )}
     </div>

@@ -2,11 +2,15 @@ import { createRoot } from 'react-dom/client';
 import { createElement } from 'react';
 import AskPagePanel from '../ask-page.content/AskPagePanel';
 import { getStyles } from '../../utils/chatStyles';
+import { initTheme, onThemeChange, applyTheme } from '../../utils/theme';
 
-// Inject styles globally since we are not in shadow DOM
+// Initialize and sync theme
+void initTheme();
+onThemeChange(applyTheme);
+
+// Inject styles globally
 const style = document.createElement('style');
-// Replace :host pseudo-class with body for global styling
-style.textContent = getStyles().replace(/:host/g, 'body');
+style.textContent = getStyles();
 document.head.appendChild(style);
 
 const wrapper = document.getElementById('root');

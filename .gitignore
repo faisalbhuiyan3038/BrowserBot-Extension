@@ -11,6 +11,8 @@ node_modules
 stats.html
 stats-*.json
 .wxt
+.output
+build_*.txt
 web-ext.config.ts
 
 # Editor directories and files

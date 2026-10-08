@@ -508,3 +508,203 @@ body {
   transform: translate(1px, 1px);
   box-shadow: none !important;
 }
+
+/* ─── Secondary Action Row (Copy Prompt / Paste AI) ────────── */
+
+.popup-action-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  align-items: stretch;
+}
+
+.popup-secondary-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  background: var(--sub);
+  border: 1.5px solid var(--bd);
+  border-radius: var(--rs);
+  box-shadow: var(--sh-sm);
+  color: var(--fg);
+  font: 700 17px/1 var(--hfont);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+.popup-secondary-btn:hover:not(:disabled) {
+  background: var(--acs);
+  color: var(--act);
+  transform: translateY(-1px);
+  box-shadow: 3px 3px 0 var(--bd);
+}
+
+.popup-secondary-btn:active:not(:disabled) {
+  transform: translate(1px, 1px);
+  box-shadow: none;
+}
+
+.popup-secondary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+/* ─── Popup Split Button (Copy Prompt Dropdown) ─────────── */
+
+.popup-split-btn-group {
+  flex: 1;
+  display: inline-flex;
+  align-items: stretch;
+  position: relative;
+  background: var(--sub);
+  border: 1.5px solid var(--bd);
+  border-radius: var(--rs);
+  box-shadow: var(--sh-sm);
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+}
+
+.popup-split-btn-group:hover {
+  transform: translateY(-1px);
+  box-shadow: 3px 3px 0 var(--bd);
+}
+
+.popup-split-btn-group:active {
+  transform: translate(1px, 1px);
+  box-shadow: none;
+}
+
+.popup-split-btn-group.copied {
+  background: var(--ub);
+  color: var(--ubf);
+}
+
+.popup-split-btn-group.copied:hover {
+  background: var(--ub);
+  color: var(--ubf);
+}
+
+.popup-split-btn-group.copied .popup-split-main-btn:hover {
+  background: transparent;
+  color: var(--ubf);
+}
+
+.popup-split-btn-group.copied .popup-split-arrow-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--ubf);
+}
+
+.popup-split-main-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: 700 17px/1 var(--hfont);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  border-top-left-radius: calc(var(--rs) - 1.5px);
+  border-bottom-left-radius: calc(var(--rs) - 1.5px);
+  user-select: none;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.popup-split-main-btn:hover:not(:disabled) {
+  background: var(--acs);
+  color: var(--act);
+}
+
+.popup-split-main-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.popup-split-arrow-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  background: transparent;
+  border: none;
+  border-left: 1.5px solid var(--bd);
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  border-top-right-radius: calc(var(--rs) - 1.5px);
+  border-bottom-right-radius: calc(var(--rs) - 1.5px);
+  user-select: none;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.popup-split-arrow-btn:hover:not(:disabled) {
+  background: var(--acs);
+  color: var(--act);
+}
+
+.popup-split-arrow-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.popup-split-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  min-width: 175px;
+  width: 100%;
+  background: var(--pbg);
+  border: 1.5px solid var(--bd);
+  border-radius: var(--rs);
+  box-shadow: var(--sh);
+  padding: 4px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-sizing: border-box;
+}
+
+.popup-split-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+  outline: none;
+  user-select: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.popup-split-menu-item:hover {
+  background: var(--acs);
+  color: var(--act);
+}
+
+.popup-split-menu-item.active {
+  background: var(--ub);
+  color: var(--ubf);
+}

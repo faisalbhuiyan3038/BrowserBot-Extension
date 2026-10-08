@@ -1,20 +1,41 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AskDevtoolsPanel from './AskDevtoolsPanel';
-import { getStyles } from '../../utils/chatStyles';
+import { getStyles, ensurePanelFonts, getRoughFilterSVG } from '../../utils/chatStyles';
+import { initTheme, onThemeChange, applyTheme } from '../../utils/theme';
+
+// Initialize and sync theme
+void initTheme();
+onThemeChange(applyTheme);
+
+// Register fonts
+void ensurePanelFonts();
 
 // Inject styles globally since we are not in shadow DOM
 const style = document.createElement('style');
-// Replace :host pseudo-class with body for global styling
-style.textContent = getStyles().replace(/:host/g, 'body');
+style.textContent = getStyles();
 document.head.appendChild(style);
 
+// Inject rough filter SVG if not already present
+if (!document.getElementById('rough')) {
+  const filterContainer = document.createElement('div');
+  filterContainer.innerHTML = getRoughFilterSVG();
+  document.body.appendChild(filterContainer);
+}
+
 // Add base styles for the full screen standalone tab
+document.documentElement.style.width = '100%';
+document.documentElement.style.height = '100%';
+document.documentElement.style.margin = '0';
+document.documentElement.style.padding = '0';
+document.documentElement.style.overflow = 'hidden';
+
+document.body.style.width = '100%';
+document.body.style.height = '100%';
 document.body.style.margin = '0';
 document.body.style.padding = '0';
-document.body.style.width = '100vw';
-document.body.style.height = '100vh';
 document.body.style.overflow = 'hidden';
+document.body.style.boxSizing = 'border-box';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

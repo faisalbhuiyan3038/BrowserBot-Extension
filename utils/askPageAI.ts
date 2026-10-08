@@ -1,4 +1,12 @@
 import { AppStorage, StorageState, OpenAIProvider, AIProviderType } from './storage';
+import {
+  getLanguageModel,
+  getChromeAIAvailability,
+  normalizeOpenAIEndpoint,
+  buildOpenAIHeaders,
+  buildOpenAIPayload,
+  normalizeOllamaEndpoint,
+} from './aiCommon';
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -47,21 +55,6 @@ export async function streamChatWithAI(
 /**
  * Check Chrome AI availability and return status info.
  */
-/**
- * Helper to get the correct standard LanguageModel object.
- * As of Chrome 138, this might be exposed globally or under ai/chrome.aiOriginTrial
- */
-export function getLanguageModel() {
-  const g = globalThis as any;
-  if (g.LanguageModel) return g.LanguageModel;
-  if (g.ai?.languageModel) return g.ai.languageModel;
-  if (g.chrome?.aiOriginTrial?.languageModel) return g.chrome.aiOriginTrial.languageModel;
-  return null;
-}
-
-/**
- * Check Chrome AI availability and return status info.
- */
 export async function checkChromeAIStatus(): Promise<ChromeAIStatus> {
   const lm = getLanguageModel();
 
@@ -74,15 +67,7 @@ export async function checkChromeAIStatus(): Promise<ChromeAIStatus> {
   }
 
   try {
-    let availability: string;
-    if (typeof lm.availability === 'function') {
-      availability = await lm.availability();
-    } else if (typeof lm.capabilities === 'function') {
-      const caps = await lm.capabilities();
-      availability = caps.available;
-    } else {
-      throw new Error('No availability method found.');
-    }
+    const availability = await getChromeAIAvailability(lm);
 
     // Accept both old ('readily') and new ('available') return values
     if (availability === 'readily' || availability === 'available') {
@@ -145,15 +130,7 @@ async function streamWithChromeAI(
     throw new Error('Chrome AI Prompt API is not available. Enable it in chrome://flags:\n• #prompt-api-for-gemini-nano → Enabled\n• #optimization-guide-on-device-model → Enabled BypassPerfRequirement');
   }
 
-  let availability: string;
-  if (typeof lm.availability === 'function') {
-    availability = await lm.availability();
-  } else if (typeof lm.capabilities === 'function') {
-    const caps = await lm.capabilities();
-    availability = caps.available;
-  } else {
-    throw new Error('No availability method found.');
-  }
+  const availability = await getChromeAIAvailability(lm);
 
   // Accept both old and new return values
   if (availability === 'no' || availability === 'unavailable') {
@@ -305,8 +282,8 @@ async function streamWithOllama(
   state: StorageState,
   options: StreamChatOptions
 ): Promise<string> {
-  const endpoint = state.ollamaEndpoint.replace(/\/+$/, '');
-  const res = await fetch(`${endpoint}/api/chat`, {
+  const url = normalizeOllamaEndpoint(state.ollamaEndpoint, '/api/chat');
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -386,27 +363,13 @@ async function streamWithOpenAI(
   provider: OpenAIProvider,
   options: StreamChatOptions
 ): Promise<string> {
-  let url = provider.endpoint.replace(/\/+$/, '');
-  if (!url.endsWith('/chat/completions')) {
-    url += '/chat/completions';
-  }
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
-  };
-  if (provider.apiKey) {
-    headers['Authorization'] = `Bearer ${provider.apiKey}`;
-  }
-
-  const body: Record<string, any> = {
-    model: provider.model,
-    messages: messages.map(m => ({ role: m.role, content: m.content })),
-    stream: true
-  };
-
-  if (provider.reasoning) {
-    body.reasoning = { enabled: true };
-  }
+  const url = normalizeOpenAIEndpoint(provider.endpoint);
+  const headers = buildOpenAIHeaders(provider.apiKey);
+  const body = buildOpenAIPayload(
+    provider.model,
+    messages.map(m => ({ role: m.role, content: m.content })),
+    { stream: true, reasoning: provider.reasoning }
+  );
 
   const res = await fetch(url, {
     method: 'POST',

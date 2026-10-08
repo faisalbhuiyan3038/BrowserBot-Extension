@@ -1,6 +1,14 @@
 import { AppStorage, StorageState, OpenAIProvider, SystemPrompt } from './storage';
-import { getLanguageModel } from './askPageAI';
 import type { OrganizePlan } from './bookmarks';
+import {
+  getLanguageModel,
+  getChromeAIAvailability,
+  normalizeOpenAIEndpoint,
+  buildOpenAIHeaders,
+  buildOpenAIPayload,
+  normalizeOllamaEndpoint,
+  parseJSONFromText,
+} from './aiCommon';
 
 export type TabInfo = {
   id: number;
@@ -24,7 +32,7 @@ export type GroupCategory = {
 /**
  * Interpolate prompt template variables with actual tab data.
  */
-function interpolatePrompt(
+export function interpolatePrompt(
   template: string,
   tabs: TabInfo[],
   existingGroups: ExistingGroup[]
@@ -53,7 +61,7 @@ function interpolatePrompt(
 
 // The output format is always appended programmatically — users
 // don't need to include it in their custom prompts.
-const OUTPUT_FORMAT_INSTRUCTION = `
+export const OUTPUT_FORMAT_INSTRUCTION = `
 
 Return a JSON object with the following structure:
 {
@@ -76,6 +84,28 @@ export interface GroupTabsOptions {
   keepExistingGroups?: boolean; // programmatic instruction to preserve existing groups
 }
 
+export function buildTabGroupPrompt(
+  templateText: string,
+  tabs: TabInfo[],
+  existingGroups: ExistingGroup[] = [],
+  options: GroupTabsOptions = {}
+): string {
+  let promptText = templateText;
+
+  if (options.keepExistingGroups && existingGroups.length > 0) {
+    promptText += `\n\nIMPORTANT: The user wants to keep their existing tab groups intact.\nHere is the data for existing groups:\n{existingGroups}\n\nIf a tab currently belongs to an existing group, you MUST keep it in that group by assigning it the EXACT same "name" and "color". You may also add ungrouped tabs to these existing groups. Do not rename existing groups or change their colors.`;
+  }
+
+  let fullPrompt = interpolatePrompt(promptText, tabs, existingGroups);
+
+  if (options.customInstructions?.trim()) {
+    fullPrompt += '\n\nAdditional instructions:\n' + options.customInstructions.trim();
+  }
+
+  fullPrompt += OUTPUT_FORMAT_INSTRUCTION;
+  return fullPrompt;
+}
+
 export async function groupTabsWithAI(
   tabs: TabInfo[],
   existingGroups: ExistingGroup[] = [],
@@ -92,20 +122,7 @@ export async function groupTabsWithAI(
     promptTemplate = await AppStorage.getActiveTabGroupPrompt();
   }
 
-  let templateText = promptTemplate.prompt;
-
-  if (options.keepExistingGroups && existingGroups.length > 0) {
-    templateText += `\n\nIMPORTANT: The user wants to keep their existing tab groups intact.\nHere is the data for existing groups:\n{existingGroups}\n\nIf a tab currently belongs to an existing group, you MUST keep it in that group by assigning it the EXACT same "name" and "color". You may also add ungrouped tabs to these existing groups. Do not rename existing groups or change their colors.`;
-  }
-
-  // Build the full prompt: template → custom instructions → output format
-  let fullPrompt = interpolatePrompt(templateText, tabs, existingGroups);
-
-  if (options.customInstructions?.trim()) {
-    fullPrompt += '\n\nAdditional instructions:\n' + options.customInstructions.trim();
-  }
-
-  fullPrompt += OUTPUT_FORMAT_INSTRUCTION;
+  const fullPrompt = buildTabGroupPrompt(promptTemplate.prompt, tabs, existingGroups, options);
 
   let jsonResponse = '';
 
@@ -119,27 +136,11 @@ export async function groupTabsWithAI(
     jsonResponse = await generateWithOpenAI(fullPrompt, provider);
   }
 
-  const parsed = parseJSON(jsonResponse);
+  const parsed = parseJSONFromText(jsonResponse);
   if (!parsed || !parsed.categories) {
     throw new Error(`AI returned invalid format. Raw response:\n${jsonResponse.substring(0, 300)}`);
   }
   return parsed.categories;
-}
-
-function parseJSON(text: string): any {
-  try { return JSON.parse(text); } catch (_) {}
-
-  const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (match?.[1]) {
-    try { return JSON.parse(match[1]); } catch (_) {}
-  }
-
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start !== -1 && end > start) {
-    try { return JSON.parse(text.substring(start, end + 1)); } catch (_) {}
-  }
-  return null;
 }
 
 // ─── Chrome AI (Prompt API) ──────────────────────────────────
@@ -150,15 +151,7 @@ async function generateWithChromeAI(prompt: string): Promise<string> {
     throw new Error('Chrome AI Prompt API is not available. Make sure you are using Chrome 131+ and enable the following flags in chrome://flags:\n• #optimization-guide-on-device-model → Enabled\n• #prompt-api-for-gemini-nano-multimodal-input → Enabled');
   }
 
-  let availability: string;
-  if (typeof lm.availability === 'function') {
-    availability = await lm.availability();
-  } else if (typeof lm.capabilities === 'function') {
-    const caps = await lm.capabilities();
-    availability = caps.available;
-  } else {
-    throw new Error('No availability method found on LanguageModel.');
-  }
+  const availability = await getChromeAIAvailability(lm);
 
   // Accept both old ('readily') and new ('available') return values
   if (availability === 'no' || availability === 'unavailable') {
@@ -181,8 +174,8 @@ async function generateWithChromeAI(prompt: string): Promise<string> {
 // ─── Ollama ──────────────────────────────────────────────────
 
 async function generateWithOllama(prompt: string, state: StorageState): Promise<string> {
-  const endpoint = state.ollamaEndpoint.replace(/\/+$/, '');
-  const res = await fetch(`${endpoint}/api/generate`, {
+  const url = normalizeOllamaEndpoint(state.ollamaEndpoint, '/api/generate');
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -204,26 +197,11 @@ async function generateWithOllama(prompt: string, state: StorageState): Promise<
 // ─── OpenAI Compatible ──────────────────────────────────────
 
 async function generateWithOpenAI(prompt: string, provider: OpenAIProvider): Promise<string> {
-  let url = provider.endpoint.replace(/\/+$/, '');
-  if (!url.endsWith('/chat/completions')) {
-    url += '/chat/completions';
-  }
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
-  };
-  if (provider.apiKey) {
-    headers['Authorization'] = `Bearer ${provider.apiKey}`;
-  }
-
-  const body: Record<string, any> = {
-    model: provider.model,
-    messages: [{ role: 'user', content: prompt }]
-  };
-
-  if (provider.reasoning) {
-    body.reasoning = { enabled: true };
-  }
+  const url = normalizeOpenAIEndpoint(provider.endpoint);
+  const headers = buildOpenAIHeaders(provider.apiKey);
+  const body = buildOpenAIPayload(provider.model, [{ role: 'user', content: prompt }], {
+    reasoning: provider.reasoning,
+  });
 
   const res = await fetch(url, {
     method: 'POST',
@@ -253,7 +231,7 @@ export interface OrganizeBookmarksOptions {
   customInstructions?: string;
 }
 
-const BOOKMARK_OUTPUT_FORMAT = `
+export const BOOKMARK_OUTPUT_FORMAT = `
 
 IMPORTANT — Root Folder Rules:
 Browsers organize bookmarks under a few fixed "root" parent folders (e.g. "Bookmarks Toolbar", "Other Bookmarks", "Mobile Bookmarks").
@@ -278,13 +256,11 @@ Rules:
 - Every bookmark must have exactly one move entry.
 - Only return valid JSON. No markdown, no explanation.`;
 
-export async function organizeBookmarksWithAI(
+export function buildBookmarkOrganizePrompt(
+  templatePrompt: string,
   options: OrganizeBookmarksOptions
-): Promise<OrganizePlan> {
-  const state = await AppStorage.get();
-
-  // Interpolate template variables in the user's custom prompt
-  let prompt = (state.bookmarkOrganizePrompt || '')
+): string {
+  let prompt = (templatePrompt || '')
     .replace(/{bookmarkList}/g,     options.bookmarkListText)
     .replace(/{bookmarkCount}/g,    String(options.bookmarkCount))
     .replace(/{folderList}/g,       options.folderListText)
@@ -303,6 +279,15 @@ export async function organizeBookmarksWithAI(
   }
 
   prompt += BOOKMARK_OUTPUT_FORMAT;
+  return prompt;
+}
+
+export async function organizeBookmarksWithAI(
+  options: OrganizeBookmarksOptions
+): Promise<OrganizePlan> {
+  const state = await AppStorage.get();
+
+  const prompt = buildBookmarkOrganizePrompt(state.bookmarkOrganizePrompt, options);
 
   let jsonResponse = '';
   if (state.activeProvider === 'chrome_ai') {
@@ -315,7 +300,7 @@ export async function organizeBookmarksWithAI(
     jsonResponse = await generateWithOpenAI(prompt, provider);
   }
 
-  const parsed = parseJSON(jsonResponse);
+  const parsed = parseJSONFromText(jsonResponse);
   if (!parsed || (!parsed.moves && !parsed.createFolders)) {
     throw new Error(`AI returned invalid format.\n\nRaw response:\n${jsonResponse.substring(0, 400)}`);
   }

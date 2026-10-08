@@ -1,5 +1,6 @@
 import { streamChatWithAI, checkChromeAIStatus, downloadChromeAIModel, ChatMessage } from '../utils/askPageAI';
-import { AppStorage, ConversationStorage, AIProviderType } from '../utils/storage';
+import { AppStorage, ConversationStorage, SessionChatStorage, AIProviderType } from '../utils/storage';
+import type { RuntimeMessage } from '../utils/messages';
 
 export default defineBackground(() => {
   console.log('BrowserBot background ready', { id: browser.runtime.id });
@@ -108,18 +109,14 @@ export default defineBackground(() => {
         const removed = await ConversationStorage.clearOld(state.askPageAutoDeleteDays);
         if (removed > 0) console.log(`Cleaned ${removed} old conversations`);
       }
+      if (!browser.storage?.session) {
+        await SessionChatStorage.clearChat();
+      }
     } catch (_) {}
   })();
 
   // ─── Message Router ────────────────────────────────────────
-  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === 'OPEN_CHAT_TAB') {
-      browser.tabs.create({ url: browser.runtime.getURL('/chat.html' as any) })
-        .then(() => sendResponse({ success: true }))
-        .catch(err => sendResponse({ error: err.message }));
-      return true;
-    }
-
+  browser.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendResponse) => {
     if (message.type === 'TOGGLE_ASK_PAGE') {
       handleToggleAskPage(message, sender);
       return false;
@@ -137,12 +134,16 @@ export default defineBackground(() => {
     }
 
     if (message.type === 'GET_TAB_LIST') {
-      handleGetTabList().then(sendResponse);
+      handleGetTabList()
+        .then(sendResponse)
+        .catch(() => sendResponse([]));
       return true;
     }
 
     if (message.type === 'GET_TAB_CONTENT') {
-      handleGetTabContent(message.tabId).then(sendResponse);
+      handleGetTabContent(message.tabId)
+        .then(sendResponse)
+        .catch(err => sendResponse({ tabId: message.tabId, title: 'Unknown', url: '', content: `(Error: ${err?.message || 'Failed'})` }));
       return true;
     }
 
@@ -153,23 +154,24 @@ export default defineBackground(() => {
 
     // ─── Chat persistence (session-based for cross-tab sync) ───
     if (message.type === 'SAVE_CHAT') {
-      browser.storage.session.set({ askPageChat: message.messages }).then(() => {
+      SessionChatStorage.saveChat(message.messages).then(() => {
         // Broadcast update to all tabs except sender
         broadcastToTabs('CHAT_UPDATED', { messages: message.messages }, sender.tab?.id);
-      });
+      }).catch(() => {});
       return false;
     }
 
     if (message.type === 'LOAD_CHAT') {
-      browser.storage.session.get('askPageChat').then((data: any) => {
-        sendResponse(data.askPageChat || []);
+      SessionChatStorage.loadChat().then((messages) => {
+        sendResponse(messages);
       }).catch(() => sendResponse([]));
       return true;
     }
 
     if (message.type === 'CLEAR_CHAT') {
-      browser.storage.session.remove('askPageChat');
-      broadcastToTabs('CHAT_UPDATED', { messages: [] }, sender.tab?.id);
+      SessionChatStorage.clearChat().then(() => {
+        broadcastToTabs('CHAT_UPDATED', { messages: [] }, sender.tab?.id);
+      }).catch(() => {});
       return false;
     }
 
@@ -191,7 +193,9 @@ export default defineBackground(() => {
 
     // ─── Chrome AI status & download ───
     if (message.type === 'CHECK_CHROME_AI') {
-      checkChromeAIStatus().then(sendResponse);
+      checkChromeAIStatus()
+        .then(sendResponse)
+        .catch(err => sendResponse({ available: 'no', error: err?.message || 'Check failed' }));
       return true;
     }
 
@@ -281,7 +285,10 @@ export default defineBackground(() => {
   // ─── Stream chat to content script ────────────────────────
   async function handleAskPageChat(message: any, sender: any) {
     const tabId = sender.tab?.id;
-    const isExtensionPage = sender.url?.startsWith('chrome-extension://') || sender.url?.startsWith('moz-extension://');
+    const isExtensionPage = !tabId || Boolean(
+      sender.url?.startsWith('chrome-extension://') ||
+      sender.url?.startsWith('moz-extension://')
+    );
     if (!tabId && !isExtensionPage) return;
 
     const messages: ChatMessage[] = message.messages;
@@ -300,8 +307,9 @@ export default defineBackground(() => {
 
     const abortListener = (msg: any, abortSender: any) => {
       if (msg.type === 'ASK_PAGE_CHAT_ABORT') {
-        if (isExtensionPage && msg.sessionId === message.sessionId) abortController.abort();
-        else if (!isExtensionPage && abortSender.tab?.id === tabId) abortController.abort();
+        if (msg.sessionId === message.sessionId || (tabId && abortSender.tab?.id === tabId)) {
+          abortController.abort();
+        }
       }
     };
     browser.runtime.onMessage.addListener(abortListener);
@@ -309,10 +317,11 @@ export default defineBackground(() => {
     const dispatchChunk = (payload: any) => {
       // Don't dispatch if this stream was aborted
       if (abortController.signal.aborted) return;
+      if (tabId) {
+        browser.tabs.sendMessage(tabId, payload).catch(() => {});
+      }
       if (isExtensionPage) {
         browser.runtime.sendMessage(payload).catch(() => {});
-      } else if (tabId) {
-        browser.tabs.sendMessage(tabId, payload).catch(() => {});
       }
     };
 
