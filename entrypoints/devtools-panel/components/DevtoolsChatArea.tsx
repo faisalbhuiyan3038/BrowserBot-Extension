@@ -47,6 +47,8 @@ interface DevtoolsChatAreaProps {
   onSelectWelcomePrompt: (promptText: string) => void;
   copyPasteUnlocked?: boolean;
   copyPasteUnlockCommand?: string;
+  buildPreamble?: () => string;
+  buildContextData?: (data?: DevToolsData | null) => Promise<string>;
   buildSystemPrompt?: () => Promise<string>;
   onExecutePasteAction?: (action: ParsedAIAction) => Promise<void> | void;
 }
@@ -96,6 +98,8 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
   onSelectWelcomePrompt,
   copyPasteUnlocked = false,
   copyPasteUnlockCommand = '/unlockMySecrets3038',
+  buildPreamble,
+  buildContextData,
   buildSystemPrompt,
   onExecutePasteAction,
 }) => {
@@ -698,8 +702,10 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
                       context={{
                         scope: 'devtools',
                         userPrompt: input,
-                        buildDevtoolsSystemPrompt: buildSystemPrompt,
+                        devtoolsPreamble: buildPreamble ? buildPreamble() : undefined,
+                        getDevtoolsContext: buildContextData ? () => buildContextData(capturedData) : undefined,
                         devtoolsContextData: capturedData ? JSON.stringify(capturedData, null, 2) : '',
+                        buildDevtoolsSystemPrompt: buildSystemPrompt,
                         historyMessages: messages,
                       }}
                     />

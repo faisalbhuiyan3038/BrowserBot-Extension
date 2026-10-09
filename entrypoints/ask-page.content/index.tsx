@@ -26,7 +26,7 @@ export default defineContentScript({
 
       // Handle content extraction requests from background
       if (message.type === 'EXTRACT_PAGE_CONTENT') {
-        const algorithm = message.algorithm || 1;
+        const algorithm = message.algorithm || 4;
         extractPageContent(algorithm).then(result => {
           sendResponse({
             content: result.content,

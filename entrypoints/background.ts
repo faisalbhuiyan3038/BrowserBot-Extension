@@ -385,7 +385,7 @@ export default defineBackground(() => {
     try {
       const tab = await browser.tabs.get(tabId);
       const state = await AppStorage.get();
-      const algorithm = state.pageExtractionAlgorithm || 1;
+      const algorithm = state.pageExtractionAlgorithm || 4;
 
       // Send extraction request to the content script in that tab
       try {
@@ -404,6 +404,31 @@ export default defineBackground(() => {
       } catch (_) {
         // Content script might not be injected in this tab. Try direct script injection fallback.
         try {
+          if (browser.scripting?.executeScript) {
+            await browser.scripting.executeScript({
+              target: { tabId },
+              files: ['/content-scripts/ask-page.js']
+            });
+            await new Promise(r => setTimeout(r, 150));
+            const retryResult = await browser.tabs.sendMessage(tabId, {
+              type: 'EXTRACT_PAGE_CONTENT',
+              algorithm
+            });
+            if (retryResult && retryResult.content) {
+              return {
+                tabId,
+                title: tab.title || '',
+                url: tab.url || '',
+                content: `[Tab: ${tab.title}]\nURL: ${tab.url}\n\n${retryResult.content}`
+              };
+            }
+          }
+        } catch (injectErr) {
+          // Injection also failed (e.g., chrome:// url)
+        }
+
+        // Secondary fallback: raw body innerText if content script injection fails
+        try {
           const textResult = await browser.scripting.executeScript({
             target: { tabId },
             func: () => document.body ? document.body.innerText.substring(0, 20000) : ''
@@ -417,9 +442,7 @@ export default defineBackground(() => {
               content: `[Tab: ${tab.title}]\nURL: ${tab.url}\n\n${textResult[0].result}`
             };
           }
-        } catch (injectErr) {
-          // Injection also failed (e.g., chrome:// url)
-        }
+        } catch (_) {}
       }
 
       // Final fallback: return basic info with clear failure message

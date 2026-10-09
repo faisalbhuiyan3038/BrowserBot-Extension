@@ -1,16 +1,17 @@
+// @ts-nocheck
 /**
  * Page Content Extraction Utility
  * 
- * Four algorithms for extracting page content in a content script context:
+ * Three algorithms for extracting page content in a content script context:
  *   1 = Text Extraction — lightweight heading/text extraction with smart truncation
  *   2 = Optimized Content Extraction — full HTML cleaning, dedup, YouTube transcript
  *   3 = Full Content Extraction — Readability + html-to-text pipeline
- *   4 = Web Scraper Algorithm (Decant) — AI-optimized markdown with tables, smart data & structured metadata
  */
 
-import type { ExtractionAlgorithm } from './storage';
-import { extract as decantExtract } from './decant/parser';
-import type { DecantMetadata, DecantOptions } from './decant/parser';
+type ExtractionAlgorithm = 1 | 2 | 3 | 4;
+import { Readability, isProbablyReaderable } from '@mozilla/readability';
+import { convert } from 'html-to-text';
+import { extract as decantExtract } from '../shared/decant/parser.js';
 
 // ═══════════════════════════════════════════════════════
 // SHARED CONFIG
@@ -33,16 +34,6 @@ export interface ExtractionResult {
   truncatedLength: number;
   algorithm: ExtractionAlgorithm;
   youtubeTranscript?: string;
-  metadata?: DecantMetadata;
-}
-
-export interface ExtractPageContentOptions {
-  characterLimit?: number;
-  promptLength?: number;
-  decantOptions?: Partial<DecantOptions>;
-  html?: string;
-  url?: string;
-  title?: string;
 }
 
 /**
@@ -51,7 +42,14 @@ export interface ExtractPageContentOptions {
  */
 export async function extractPageContent(
   algorithm: ExtractionAlgorithm,
-  options?: ExtractPageContentOptions
+  options?: { 
+    characterLimit?: number; 
+    promptLength?: number;
+    decantOptions?: any;
+    html?: string;
+    url?: string;
+    title?: string;
+  }
 ): Promise<ExtractionResult> {
   console.log(`[BrowserBot] Starting page extraction using Algorithm ${algorithm}`);
   const charLimit = options?.characterLimit || TRUNC_CONFIG.characterLimit;
@@ -68,7 +66,7 @@ export async function extractPageContent(
     case 4:
       return await extractAlgorithm4(options);
     default:
-      return await extractAlgorithm4(options);
+      return extractAlgorithm1(maxContentLength);
   }
 }
 
@@ -617,8 +615,7 @@ async function extractL(url: string) {
 
 async function extractAlgorithm3(): Promise<ExtractionResult> {
   // Dynamic imports to keep these out of the main bundle for alg 1/2
-  const { Readability, isProbablyReaderable } = await import('@mozilla/readability');
-  const { convert } = await import('html-to-text');
+  // Readability and convert imported at the top
 
   const isReadable = isProbablyReaderable(document);
   const readabilityResult = isReadable ? parseWithReadability(Readability) : null;
@@ -698,41 +695,46 @@ function parseWithReadability(ReadabilityClass: any): any {
   return new ReadabilityClass(docClone).parse();
 }
 
-// ═══════════════════════════════════════════════════════
-// ALGORITHM 4: WEB SCRAPER ALGORITHM (DECANT)
-// Advanced AI-optimized markdown extraction pipeline with
-// tables, code blocks, structured data, and smart entities
-// ═══════════════════════════════════════════════════════
-
-async function extractAlgorithm4(options?: ExtractPageContentOptions): Promise<ExtractionResult> {
+async function extractAlgorithm4(options?: {
+  characterLimit?: number;
+  promptLength?: number;
+  decantOptions?: any;
+  html?: string;
+  url?: string;
+  title?: string;
+}): Promise<ExtractionResult> {
+  const selection = window.getSelection()?.toString()?.trim();
   let html = options?.html;
-  const url = options?.url || window.location.href;
-  const title = options?.title || document.title;
+  let url = options?.url || window.location.href;
+  let title = options?.title || document.title;
 
   if (!html) {
-    const docClone = document.cloneNode(true) as Document;
-    const base = window.location.href;
-    docClone.querySelectorAll('img[src]').forEach((img: Element) => {
-      try {
-        const src = img.getAttribute('src');
-        if (src) (img as HTMLImageElement).src = new URL(src, base).href;
-      } catch { /* skip */ }
-    });
-    docClone.querySelectorAll('img[data-src]').forEach((img: Element) => {
-      try {
-        const dataSrc = img.getAttribute('data-src');
-        if (dataSrc) img.setAttribute('data-src', new URL(dataSrc, base).href);
-      } catch { /* skip */ }
-    });
-    docClone.querySelectorAll('a[href]').forEach((a: Element) => {
-      try {
-        const href = a.getAttribute('href');
-        if (href && !href.startsWith('#') && !href.startsWith('javascript:')) {
-          (a as HTMLAnchorElement).href = new URL(href, base).href;
-        }
-      } catch { /* skip */ }
-    });
-    html = docClone.documentElement.outerHTML;
+    if (selection) {
+      const safe = selection.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      html = `<html><body><article>${safe}</article></body></html>`;
+    } else {
+      const docClone = document.cloneNode(true);
+      const base = window.location.href;
+      docClone.querySelectorAll('img[src]').forEach((img: any) => {
+        try {
+          img.src = new URL(img.getAttribute('src'), base).href;
+        } catch { /* skip */ }
+      });
+      docClone.querySelectorAll('img[data-src]').forEach((img: any) => {
+        try {
+          img.setAttribute('data-src', new URL(img.getAttribute('data-src'), base).href);
+        } catch { /* skip */ }
+      });
+      docClone.querySelectorAll('a[href]').forEach((a: any) => {
+        try {
+          const href = a.getAttribute('href');
+          if (href && !href.startsWith('#') && !href.startsWith('javascript:')) {
+            a.href = new URL(href, base).href;
+          }
+        } catch { /* skip */ }
+      });
+      html = docClone.documentElement.outerHTML;
+    }
   }
 
   const decantOpts = options?.decantOptions || {};
@@ -745,7 +747,7 @@ async function extractAlgorithm4(options?: ExtractPageContentOptions): Promise<E
     includeImages: decantOpts.includeImages !== false,
     detectTables: decantOpts.detectTables !== false,
     smartExtract: decantOpts.smartExtract !== false,
-    fullPage: decantOpts.fullPage === true,
+    fullPage: selection ? true : (decantOpts.fullPage === true)
   });
 
   return {
@@ -753,7 +755,114 @@ async function extractAlgorithm4(options?: ExtractPageContentOptions): Promise<E
     originalLength: html.length,
     truncatedLength: result.output.length,
     algorithm: 4,
-    metadata: result.metadata,
+    metadata: result.metadata
   };
 }
 
+// ═══════════════════════════════════════════════════════
+// IFRAME DISCOVERY
+// ═══════════════════════════════════════════════════════
+
+/**
+ * Returns a flat list of all iframes visible in the current document,
+ * including nested ones, with hierarchical path labels.
+ * Used by the background to cross-reference against webNavigation frame data.
+ */
+function discoverIframes(): Array<{ label: string; src: string; depth: number }> {
+    const results: Array<{ label: string; src: string; depth: number }> = [];
+
+    function walk(win: Window, parentLabel: string, depth: number) {
+        try {
+            const iframes = Array.from(win.document.querySelectorAll('iframe'));
+            iframes.forEach((iframe, idx) => {
+                const seg = `iframe-${idx}`;
+                const label = parentLabel ? `${parentLabel} > ${seg}` : `main > ${seg}`;
+                const src = iframe.src || iframe.getAttribute('src') || '(no src)';
+                results.push({ label, src, depth });
+                // Recurse into accessible same-origin iframes
+                try {
+                    const childWin = iframe.contentWindow;
+                    if (childWin && childWin.document) {
+                        walk(childWin, label, depth + 1);
+                    }
+                } catch (_) { /* cross-origin child — will be discovered via webNavigation */ }
+            });
+        } catch (_) { /* skip inaccessible window */ }
+    }
+
+    walk(window, '', 1);
+    return results;
+}
+
+// ═══════════════════════════════════════════════════════
+// MESSAGE LISTENER
+// ═══════════════════════════════════════════════════════
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    // ── Extract page content (main algorithm dispatcher) ──────────────────────
+    if (request.action === 'extractContent') {
+        const charLimit = request.characterLimit || TRUNC_CONFIG.characterLimit;
+        const promptLength = request.promptLength || 0;
+        
+        let algorithm: ExtractionAlgorithm = 1;
+        if (request.algorithm === 2) algorithm = 2;
+        if (request.algorithm === 3) algorithm = 3;
+        if (request.algorithm === 4) algorithm = 4;
+
+        extractPageContent(algorithm, { 
+            characterLimit: charLimit, 
+            promptLength,
+            decantOptions: request.decantOptions,
+            html: request.html,
+            url: request.url,
+            title: request.title
+        })
+            .then(result => {
+                sendResponse({
+                    success: true,
+                    content: result.content,
+                    originalLength: result.originalLength,
+                    truncatedLength: result.truncatedLength,
+                    metadata: result.metadata
+                });
+            })
+            .catch(error => {
+                sendResponse({
+                    success: false,
+                    error: error instanceof Error ? error.message : String(error)
+                });
+            });
+            
+        return true; // Keep message channel open for async response
+    }
+
+    if (request.action === 'copyToClipboard') {
+        navigator.clipboard.writeText(request.text)
+            .then(() => sendResponse({ success: true }))
+            .catch(err => sendResponse({ success: false, error: err instanceof Error ? err.message : String(err) }));
+        return true;
+    }
+
+    // ── Return identity info for this frame (used by background frame resolver) ─
+    if (request.action === 'getFrameInfo') {
+        sendResponse({
+            success: true,
+            title: document.title || '',
+            url: window.location.href,
+            isSubFrame: window !== window.top
+        });
+        return false;
+    }
+
+    // ── Discover iframes in the current (main) document ───────────────────────
+    // Only useful when called on the main frame (frameId 0).
+    if (request.action === 'getIframesDOM') {
+        try {
+            const iframes = discoverIframes();
+            sendResponse({ success: true, iframes });
+        } catch (e) {
+            sendResponse({ success: false, iframes: [] });
+        }
+        return false;
+    }
+});

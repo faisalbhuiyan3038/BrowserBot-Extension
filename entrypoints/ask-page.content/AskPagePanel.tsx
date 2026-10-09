@@ -42,7 +42,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
   const [panelWidth, setPanelWidth] = useState(420);
   const [persistChat, setPersistChat] = useState(false);
   const [currentTabAttached, setCurrentTabAttached] = useState(false);
-  const [extractionAlgorithm, setExtractionAlgorithm] = useState<ExtractionAlgorithm>(1);
+  const [extractionAlgorithm, setExtractionAlgorithm] = useState<ExtractionAlgorithm>(4);
 
   // Copy-paste manual workflow state
   const [copyPasteUnlocked, setCopyPasteUnlocked] = useState(false);
@@ -145,7 +145,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
       setQuickPrompts(state.askPagePrompts);
       setPanelWidth(state.askPagePanelWidth || 420);
       setPersistChat(state.askPagePersistChat || false);
-      setExtractionAlgorithm(state.pageExtractionAlgorithm || 1);
+      setExtractionAlgorithm(state.pageExtractionAlgorithm || 4);
       setCopyPasteUnlocked(state.copyPasteUnlocked ?? false);
       setCopyPasteUnlockCommand(state.copyPasteUnlockCommand || '/unlockMySecrets3038');
 
@@ -171,7 +171,7 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
         setQuickPrompts(state.askPagePrompts);
         setPanelWidth(state.askPagePanelWidth || 420);
         setPersistChat(state.askPagePersistChat || false);
-        setExtractionAlgorithm(state.pageExtractionAlgorithm || 1);
+        setExtractionAlgorithm(state.pageExtractionAlgorithm || 4);
         if (state.copyPasteUnlocked !== undefined) setCopyPasteUnlocked(state.copyPasteUnlocked);
         if (state.copyPasteUnlockCommand) setCopyPasteUnlockCommand(state.copyPasteUnlockCommand);
       }
@@ -699,11 +699,14 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
 
   // Extract current tab content when attached
   const [currentTabContent, setCurrentTabContent] = useState<string>('');
+  const [rawPageContent, setRawPageContent] = useState<string>('');
   useEffect(() => {
     if (currentTabAttached) {
       extractPageContent(extractionAlgorithm).then(result => {
+        setRawPageContent(result.content);
         setCurrentTabContent(`[Current Page: ${pageTitle}]\nURL: ${pageUrl}\n\n${result.content}`);
       }).catch(() => {
+        setRawPageContent('');
         setCurrentTabContent(`[Current Page: ${pageTitle}]\nURL: ${pageUrl}\n\n(Extraction failed)`);
       });
     } else {
@@ -1294,7 +1297,17 @@ export default function AskPagePanel({ pageTitle, pageUrl, onClose, onRegisterSh
                       pageTitle,
                       pageUrl,
                       selectedText: window.getSelection()?.toString() || '',
-                      pageContent: currentTabContent || '',
+                      pageContent: rawPageContent || '',
+                      getPageContent: async () => {
+                        if (rawPageContent) return rawPageContent;
+                        try {
+                          const result = await extractPageContent(extractionAlgorithm);
+                          setRawPageContent(result.content);
+                          return result.content;
+                        } catch {
+                          return '(Could not extract page content)';
+                        }
+                      },
                       attachedTabs: getAllAttachedTabs(),
                       historyMessages: messages,
                     }}

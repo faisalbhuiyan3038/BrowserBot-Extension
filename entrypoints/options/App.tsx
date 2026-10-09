@@ -762,6 +762,7 @@ export default function App() {
                 <option value={1}>Text Extraction</option>
                 <option value={2}>Optimized Content Extraction</option>
                 <option value={3}>⚠️ Full Content Extraction</option>
+                <option value={4}>Web Scraper Algorithm (Advanced)</option>
               </select>
               <div className="algo-descriptions" style={{ marginTop: 12 }}>
                 {state.pageExtractionAlgorithm === 1 && (
@@ -774,6 +775,9 @@ export default function App() {
                   <div>
                     <p className="section-desc" style={{ color: '#f59e0b' }}>⚠️ <strong>Warning:</strong> Extracts maximum page content using Mozilla Readability. This may use significantly more tokens as more content is captured, including potentially unnecessary content.</p>
                   </div>
+                )}
+                {state.pageExtractionAlgorithm === 4 && (
+                  <p className="section-desc">Advanced content extraction pipeline (Decant). Extracts clean AI-optimized Markdown with structured data, tables, code blocks, smart entity detection (dates, emails, prices), and token estimation.</p>
                 )}
               </div>
             </div>

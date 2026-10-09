@@ -2,7 +2,7 @@ import type { TabInfo, ExistingGroup } from './ai';
 import { buildTabGroupPrompt, buildBookmarkOrganizePrompt, interpolatePrompt, OUTPUT_FORMAT_INSTRUCTION, BOOKMARK_OUTPUT_FORMAT } from './ai';
 import type { OrganizeBookmarksOptions } from './ai';
 import type { ChatMsg } from './storage';
-import { DEFAULT_TAB_GROUP_PROMPT, DEFAULT_BOOKMARK_ORGANIZE_PROMPT } from './storage';
+import { DEFAULT_TAB_GROUP_PROMPT, DEFAULT_BOOKMARK_ORGANIZE_PROMPT, DEFAULT_DEVTOOLS_SYSTEM_PROMPT } from './storage';
 
 /**
  * ==============================================================================
@@ -32,6 +32,7 @@ export interface PromptContext {
   pageUrl?: string;
   selectedText?: string;
   pageContent?: string;
+  getPageContent?: () => Promise<string> | string;
   attachedTabs?: Array<{ id: number; title: string; url: string; content: string }>;
 
   // Browser-derived data for Tab Grouping
@@ -46,6 +47,7 @@ export interface PromptContext {
   // Browser-derived data for DevTools
   devtoolsPreamble?: string;
   devtoolsContextData?: string;
+  getDevtoolsContext?: () => Promise<string> | string;
   buildDevtoolsSystemPrompt?: () => Promise<string> | string;
 
   // Conversation history
@@ -91,8 +93,8 @@ function buildPromptOnly(context: PromptContext): string {
       return text.trim();
     }
     case 'devtools': {
-      const preamble = context.devtoolsPreamble || context.systemPrompt || 'You are an expert web developer and debugger AI assistant.';
-      const parts = [`System Instruction:\n${preamble}`];
+      const preamble = context.devtoolsPreamble || context.systemPrompt || DEFAULT_DEVTOOLS_SYSTEM_PROMPT;
+      const parts = [`System Instruction:\n${preamble.trim()}${MARKDOWN_FORMAT_INSTRUCTION}`];
       if (context.userPrompt?.trim()) {
         parts.push(`User Prompt:\n${context.userPrompt.trim()}`);
       }
@@ -102,11 +104,11 @@ function buildPromptOnly(context: PromptContext): string {
     default: {
       const parts: string[] = [];
       const sys = (context.systemPrompt || '')
-        .replace(/\{pageTitle\}/g, context.pageTitle || '')
-        .replace(/\{pageUrl\}/g, context.pageUrl || '')
-        .replace(/\{selectedText\}/g, context.selectedText || '')
-        .replace(/\{pageContent\}/g, '[Extracted Page Content]')
-        .replace(/\{tabContext\}/g, '[Attached Tabs Context]');
+        .replace(/\{pageTitle\}/g, '[Page Title placeholder]')
+        .replace(/\{pageUrl\}/g, '[Page URL placeholder]')
+        .replace(/\{selectedText\}/g, '[Selected Text placeholder]')
+        .replace(/\{pageContent\}/g, '[Extracted Page Content placeholder]')
+        .replace(/\{tabContext\}/g, '[Attached Tabs Context placeholder]');
       if (sys.trim()) {
         parts.push(`System Instruction:\n${sys.trim()}${MARKDOWN_FORMAT_INSTRUCTION}`);
       }
@@ -118,7 +120,7 @@ function buildPromptOnly(context: PromptContext): string {
   }
 }
 
-function buildBrowserContextOnly(context: PromptContext): string {
+async function buildBrowserContextOnly(context: PromptContext): Promise<string> {
   switch (context.scope) {
     case 'tab-group': {
       const lines: string[] = [];
@@ -144,6 +146,12 @@ function buildBrowserContextOnly(context: PromptContext): string {
       return lines.join('\n').trim();
     }
     case 'devtools': {
+      if (context.getDevtoolsContext) {
+        try {
+          const res = await context.getDevtoolsContext();
+          if (res?.trim()) return res.trim();
+        } catch (_) {}
+      }
       return context.devtoolsContextData?.trim() || '';
     }
     case 'ask-page':
@@ -156,13 +164,25 @@ function buildBrowserContextOnly(context: PromptContext): string {
       if (context.selectedText?.trim()) {
         lines.push(`\nSelected Text:\n${context.selectedText.trim()}`);
       }
-      if (context.pageContent?.trim()) {
-        lines.push(`\nPage Content:\n${context.pageContent.trim()}`);
+
+      let content = context.pageContent?.trim();
+      if (!content && context.getPageContent) {
+        try {
+          content = (await context.getPageContent())?.trim();
+        } catch (_) {}
       }
+
+      if (content) {
+        lines.push(`\nPage Content:\n${content}`);
+      }
+
       if (context.attachedTabs && context.attachedTabs.length > 0) {
-        lines.push('\nAttached Tabs Context:');
-        for (const tab of context.attachedTabs) {
-          lines.push(`--- ${tab.title} (${tab.url}) ---\n${tab.content}`);
+        const otherTabs = context.attachedTabs.filter(t => t.id !== -1);
+        if (otherTabs.length > 0) {
+          lines.push('\nAttached Tabs Context:');
+          for (const tab of otherTabs) {
+            lines.push(`--- ${tab.title} (${tab.url}) ---\n${tab.content}`);
+          }
         }
       }
       return lines.join('\n').trim();
@@ -191,35 +211,60 @@ async function buildFullPrompt(context: PromptContext): Promise<string> {
       );
     }
     case 'devtools': {
-      if (context.buildDevtoolsSystemPrompt) {
-        const sys = await context.buildDevtoolsSystemPrompt();
-        const parts = [sys];
-        if (context.historyMessages && context.historyMessages.length > 0) {
-          parts.push('## Previous Conversation:');
-          for (const m of context.historyMessages) {
-            if (m.role === 'error') continue;
-            parts.push(`[${m.role.toUpperCase()}]: ${m.content}`);
-          }
-        }
-        if (context.userPrompt?.trim()) {
-          parts.push(`[USER]: ${context.userPrompt.trim()}`);
-        }
-        return parts.join('\n\n').trim();
+      const parts: string[] = [];
+      const preamble = context.devtoolsPreamble || context.systemPrompt || DEFAULT_DEVTOOLS_SYSTEM_PROMPT;
+      parts.push(`[SYSTEM INSTRUCTION]\n${preamble.trim()}${MARKDOWN_FORMAT_INSTRUCTION}`);
+
+      let devtoolsContext = '';
+      if (context.getDevtoolsContext) {
+        try {
+          devtoolsContext = (await context.getDevtoolsContext())?.trim() || '';
+        } catch (_) {}
       }
-      return buildPromptOnly(context);
+      if (!devtoolsContext && context.devtoolsContextData) {
+        devtoolsContext = context.devtoolsContextData.trim();
+      }
+
+      if (devtoolsContext) {
+        parts.push(`[CAPTURED DEVTOOLS CONTEXT]\n${devtoolsContext}`);
+      }
+
+      if (context.historyMessages && context.historyMessages.length > 0) {
+        parts.push('## Previous Conversation:');
+        for (const m of context.historyMessages) {
+          if (m.role === 'error') continue;
+          parts.push(`[${m.role.toUpperCase()}]: ${m.content}`);
+        }
+      }
+
+      if (context.userPrompt?.trim()) {
+        parts.push(`[USER]: ${context.userPrompt.trim()}`);
+      }
+
+      return parts.join('\n\n').trim();
     }
     case 'ask-page':
     default: {
+      let pageContent = context.pageContent?.trim();
+      if (!pageContent && context.getPageContent) {
+        try {
+          pageContent = (await context.getPageContent())?.trim();
+        } catch (_) {}
+      }
+
       let sysContent = (context.systemPrompt || '')
         .replaceAll('{pageTitle}', context.pageTitle || '')
         .replaceAll('{pageUrl}', context.pageUrl || '')
         .replaceAll('{selectedText}', context.selectedText || '');
 
       if (sysContent.includes('{pageContent}')) {
-        sysContent = sysContent.replaceAll('{pageContent}', context.pageContent || '(Could not extract page content)');
+        sysContent = sysContent.replaceAll('{pageContent}', pageContent || '(Could not extract page content)');
       }
 
-      const attachedTabsContext = (context.attachedTabs || []).map(t => t.content).join('\n\n---\n\n');
+      const attachedTabsList = context.attachedTabs || [];
+      const otherTabs = attachedTabsList.filter(t => t.id !== -1);
+      const attachedTabsContext = otherTabs.map(t => `--- ${t.title} (${t.url}) ---\n${t.content}`).join('\n\n');
+
       if (attachedTabsContext) {
         if (sysContent.includes('{tabContext}')) {
           sysContent = sysContent.replaceAll('{tabContext}', attachedTabsContext);
@@ -234,10 +279,14 @@ async function buildFullPrompt(context: PromptContext): Promise<string> {
 
       const fullSections: string[] = [`[SYSTEM INSTRUCTION]\n${sysContent}`];
 
-      if (context.attachedTabs && context.attachedTabs.length > 0) {
-        fullSections.push(
-          `[ATTACHED TABS CONTEXT]\n${context.attachedTabs.map(t => `--- ${t.title} (${t.url}) ---\n${t.content}`).join('\n\n')}`
-        );
+      // If pageContent was not interpolated via {pageContent}, include it as [PAGE CONTEXT]
+      if (pageContent && !sysContent.includes(pageContent)) {
+        fullSections.push(`[PAGE CONTEXT]\nTitle: ${context.pageTitle || 'Untitled'}\nURL: ${context.pageUrl || 'unknown'}\n\n${pageContent}`);
+      }
+
+      // If attached tabs were not interpolated via {tabContext}, include them:
+      if (otherTabs.length > 0 && !sysContent.includes(attachedTabsContext)) {
+        fullSections.push(`[ATTACHED TABS CONTEXT]\n${attachedTabsContext}`);
       }
 
       if (context.historyMessages && context.historyMessages.length > 0) {

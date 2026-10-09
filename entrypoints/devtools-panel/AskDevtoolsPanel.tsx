@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
-import { AppStorage, OpenAIProvider, AIProviderType, ChatMsg, Conversation, generateUUID } from '../../utils/storage';
+import { AppStorage, OpenAIProvider, AIProviderType, ChatMsg, Conversation, generateUUID, DEFAULT_DEVTOOLS_SYSTEM_PROMPT } from '../../utils/storage';
 import { DevtoolsSidebar } from './components/DevtoolsSidebar';
 import { DevtoolsChatArea } from './components/DevtoolsChatArea';
 import type { DevToolsConfig, DevToolsData } from './types';
@@ -393,10 +393,9 @@ export default function AskDevtoolsPanel() {
     setIsCapturing(false);
   };
 
-  const buildSystemPrompt = async () => {
-    // Substitute variables into the user's custom system prompt
+  const buildPreamble = () => {
     const meta = capturedData?.metadata;
-    const preamble = (devtoolsSystemPrompt || 'You are an expert web developer and debugger AI assistant. The user needs help analyzing DevTools data captured from the inspected webpage.')
+    return (devtoolsSystemPrompt || DEFAULT_DEVTOOLS_SYSTEM_PROMPT)
       .replace(/{url}/g,                meta?.url           || '')
       .replace(/{pageTitle}/g,          meta?.title         || '')
       .replace(/{userAgent}/g,          meta?.userAgent     || '')
@@ -405,8 +404,11 @@ export default function AskDevtoolsPanel() {
       .replace(/{timestamp}/g,          new Date().toISOString())
       .replace(/{localStorageKeys}/g,   (meta?.localKeys  || []).join(', ') || '(none)')
       .replace(/{sessionStorageKeys}/g, (meta?.sessionKeys || []).join(', ') || '(none)');
+  };
 
-    let prompt = preamble + '\n\n';
+  const buildContextData = async (): Promise<string> => {
+    if (!capturedData) return '';
+    let prompt = '';
 
     if (capturedData?.metadata) {
       const m = capturedData.metadata;
@@ -586,15 +588,28 @@ export default function AskDevtoolsPanel() {
       prompt += '\n';
     }
 
-    prompt += MARKDOWN_FORMAT_INSTRUCTION;
+    return prompt.trim();
+  };
 
-    return prompt;
+  const buildSystemPrompt = async () => {
+    const preamble = buildPreamble();
+    const contextData = await buildContextData();
+    let full = preamble;
+    if (contextData) {
+      full += '\n\n' + contextData;
+    }
+    full += MARKDOWN_FORMAT_INSTRUCTION;
+    return full;
   };
 
   const copyContext = async () => {
-    if (!capturedData) return;
-    const prompt = await buildSystemPrompt();
-    navigator.clipboard.writeText(prompt).then(() => {
+    if (!capturedData) {
+      setCaptureStatus('⚠️ No context captured yet. Click Capture Context first!');
+      setTimeout(() => setCaptureStatus(''), 2500);
+      return;
+    }
+    const contextData = await buildContextData();
+    navigator.clipboard.writeText(contextData).then(() => {
       setCaptureStatus('✅ Context copied to clipboard!');
       setTimeout(() => setCaptureStatus(''), 2000);
     });
@@ -825,6 +840,8 @@ export default function AskDevtoolsPanel() {
         onSelectWelcomePrompt={handleSelectWelcomePrompt}
         copyPasteUnlocked={copyPasteUnlocked}
         copyPasteUnlockCommand={copyPasteUnlockCommand}
+        buildPreamble={buildPreamble}
+        buildContextData={buildContextData}
         buildSystemPrompt={buildSystemPrompt}
         onExecutePasteAction={handlePasteAction}
       />

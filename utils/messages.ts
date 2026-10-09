@@ -1,5 +1,5 @@
 import type { ChatMessage } from './askPageAI';
-import type { Conversation, ChatMsg, AIProviderType } from './storage';
+import type { Conversation, ChatMsg, AIProviderType, ExtractionAlgorithm } from './storage';
 
 // ─── Discriminated union of all runtime messages across BrowserBot ───
 
@@ -39,7 +39,7 @@ export type RuntimeMessage =
   | { type: 'CHECK_CHROME_AI' }
   | { type: 'DOWNLOAD_CHROME_AI' }
   | { type: 'GET_BOOKMARKS' }
-  | { type: 'EXTRACT_PAGE_CONTENT'; algorithm?: number }
+  | { type: 'EXTRACT_PAGE_CONTENT'; algorithm?: ExtractionAlgorithm }
   | { type: 'CHAT_UPDATED'; messages: ChatMsg[] }
   | { type: 'CHROME_AI_DOWNLOAD_PROGRESS'; progress: number }
   | { type: 'ASK_PAGE_CHAT_CHUNK'; chunk: string; sessionId?: string }

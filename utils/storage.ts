@@ -1,5 +1,5 @@
 export type AIProviderType = 'ollama' | 'openai' | 'chrome_ai';
-export type ExtractionAlgorithm = 1 | 2 | 3;
+export type ExtractionAlgorithm = 1 | 2 | 3 | 4;
 
 export interface OpenAIProvider {
   id: string;
@@ -97,7 +97,7 @@ export interface StorageState {
   askPagePersistChat: boolean;
   askPageAutoDeleteDays: number;      // 0 = never, 7/14/30/custom
   askPageMaxConversations: number;    // max stored conversations
-  pageExtractionAlgorithm: ExtractionAlgorithm;  // 1=Text, 2=Optimized, 3=Full
+  pageExtractionAlgorithm: ExtractionAlgorithm;  // 1=Text, 2=Optimized, 3=Full, 4=Web Scraper (Decant)
   askPageFloatingButton: boolean;     // show floating button on pages
 
   // Ask DevTools config
@@ -245,7 +245,7 @@ export const defaultState: StorageState = {
   askPagePersistChat: false,
   askPageAutoDeleteDays: 0,       // 0 = never auto-delete
   askPageMaxConversations: 100,
-  pageExtractionAlgorithm: 1 as ExtractionAlgorithm,  // default: Text Extraction
+  pageExtractionAlgorithm: 4 as ExtractionAlgorithm,  // default: Web Scraper (Decant)
   askPageFloatingButton: true,  // default: show floating button
 
   // Ask DevTools defaults
