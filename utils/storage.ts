@@ -32,6 +32,13 @@ export interface Conversation {
   pageUrl: string;
   pageTitle: string;
   messages: ChatMsg[];
+  /** DevTools capture snapshot attached to this conversation. */
+  devtoolsCapture?: any;
+  /** Stable, already-redacted context used for this conversation. */
+  devtoolsContext?: string;
+  /** Capture selection and opt-in settings in effect when the snapshot was taken. */
+  devtoolsConfig?: any;
+  devtoolsSelection?: any;
 }
 
 // ─── Available template variables for tab grouping prompts ───
@@ -361,6 +368,11 @@ export const ConversationStorage = {
       const state = await AppStorage.get();
       const maxConvs = state.askPageMaxConversations || 100;
       const trimmed = all.slice(0, maxConvs);
+      const maxConversationChars = 4_000_000;
+      while (trimmed.length > 1 && JSON.stringify(trimmed).length > maxConversationChars) trimmed.pop();
+      if (JSON.stringify(trimmed).length > maxConversationChars) {
+        throw new Error('Conversation history exceeds the local storage budget. Remove a large attachment or shorten the conversation.');
+      }
 
       await browser.storage.local.set({ askPageConversations: trimmed });
     });

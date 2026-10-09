@@ -502,7 +502,12 @@ export const DevtoolsChatArea: React.FC<DevtoolsChatAreaProps> = ({
       )}
 
       {/* ─── Messages list (Ruled Notebook Background) ─── */}
-      <div className="askpage-messages" ref={messagesContainerRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 24px' }}>
+      <div className="askpage-messages" ref={messagesContainerRef} onClick={e => {
+        const button = (e.target as HTMLElement).closest('.askpage-copy-btn');
+        if (!button) return;
+        const code = button.parentElement?.querySelector('code')?.textContent || '';
+        navigator.clipboard.writeText(code).then(() => { button.textContent = 'Copied!'; setTimeout(() => { button.textContent = 'Copy'; }, 1500); }).catch(() => {});
+      }} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 24px' }}>
         <div style={{ maxWidth: 840, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
           {messages.length === 0 ? (
             <div className="askpage-welcome" style={{ width: '100%', boxSizing: 'border-box' }}>

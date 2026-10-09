@@ -57,12 +57,18 @@ export function buildOpenAIHeaders(apiKey?: string): Record<string, string> {
  */
 export function buildOpenAIPayload(
   model: string,
-  messages: Array<{ role: string; content: string }>,
+  messages: Array<{ role: string; content: string; imageDataUrl?: string }>,
   options: { stream?: boolean; reasoning?: boolean } = {}
 ): Record<string, any> {
   const body: Record<string, any> = {
     model,
-    messages,
+    messages: messages.map(({ role, content, imageDataUrl }) => imageDataUrl ? {
+      role,
+      content: [
+        { type: 'text', text: content },
+        { type: 'image_url', image_url: { url: imageDataUrl } },
+      ],
+    } : { role, content }),
   };
   if (options.stream) {
     body.stream = true;

@@ -204,6 +204,48 @@ export default defineBackground(() => {
       return true;
     }
 
+    if (message.type === 'GET_DEVTOOLS_COOKIES') {
+      if (!sender.url?.startsWith(browser.runtime.getURL(''))) {
+        sendResponse([]);
+        return false;
+      }
+      const url = String((message as any).url || '');
+      if (!/^https?:\/\//i.test(url) || !browser.cookies?.getAll) {
+        sendResponse([]);
+        return false;
+      }
+      browser.cookies.getAll({ url }).then((cookies: any[]) => sendResponse(cookies.slice(0, 100).map(c => ({
+        name: c.name,
+        domain: c.domain,
+        path: c.path,
+        secure: c.secure,
+        httpOnly: c.httpOnly,
+        sameSite: c.sameSite,
+        session: c.session,
+        expirationDate: c.expirationDate,
+        value: (message as any).includeValues ? String(c.value || '').slice(0, 256) : undefined,
+      })))).catch(() => sendResponse([]));
+      return true;
+    }
+
+    if (message.type === 'CAPTURE_DEVTOOLS_SCREENSHOT') {
+      if (!sender.url?.startsWith(browser.runtime.getURL(''))) {
+        sendResponse({ error: 'Only extension pages can capture DevTools screenshots.' });
+        return false;
+      }
+      captureDevtoolsScreenshot(Number((message as any).tabId)).then(sendResponse).catch(err => sendResponse({ error: err.message }));
+      return true;
+    }
+
+    if (message.type === 'GET_DEVTOOLS_ELEMENT_CDP') {
+      if (!sender.url?.startsWith(browser.runtime.getURL(''))) {
+        sendResponse({ error: 'Only extension pages can request DevTools element data.' });
+        return false;
+      }
+      captureDevtoolsElementCDP(message as any).then(sendResponse).catch(err => sendResponse({ error: err.message }));
+      return true;
+    }
+
     // ─── Removed legacy DevTools Chat handling ──────────────────────────
 
     // ─── Bookmarks ──────────────────────────────────────────────
@@ -216,6 +258,68 @@ export default defineBackground(() => {
 
     return false;
   });
+
+  async function captureDevtoolsScreenshot(tabId: number) {
+    if (!Number.isInteger(tabId) || tabId < 0) throw new Error('Invalid inspected tab');
+    const tab = await browser.tabs.get(tabId);
+    const [activeTab] = await browser.tabs.query({ active: true, windowId: tab.windowId });
+    if (activeTab?.id === tabId) {
+      return { dataUrl: await browser.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 65 }) };
+    }
+    // CDP is only available in Chrome and can capture an inspected tab that is
+    // not the active tab. Firefox has no matching target-specific screenshot API.
+    if (browser.runtime.getURL('').startsWith('chrome-extension://') && (browser as any).debugger?.attach) {
+      const target = { tabId };
+      let attachedHere = false;
+      try {
+        await (browser as any).debugger.attach(target, '1.3');
+        attachedHere = true;
+        const result = await (browser as any).debugger.sendCommand(target, 'Page.captureScreenshot', { format: 'jpeg', quality: 65, captureBeyondViewport: false });
+        return { dataUrl: `data:image/jpeg;base64,${result.data}` };
+      } finally {
+        if (attachedHere) await (browser as any).debugger.detach(target).catch(() => {});
+      }
+    }
+    throw new Error('Bring the inspected tab to the front before capturing a screenshot in Firefox.');
+  }
+
+  async function captureDevtoolsElementCDP(message: any) {
+    if (!browser.runtime.getURL('').startsWith('chrome-extension://')) return { unsupported: 'Matched CSS and the full accessibility tree require Chrome CDP; Firefox includes computed styles and an ARIA approximation.' };
+    const debuggerApi = (browser as any).debugger;
+    if (!debuggerApi?.attach || !Number.isInteger(message.tabId) || typeof message.selector !== 'string' || message.selector.length > 2000) return { unsupported: 'Chrome debugger API or a valid selected-element selector is unavailable.' };
+    const target = { tabId: message.tabId };
+    let attached = false;
+    try {
+      await debuggerApi.attach(target, '1.3');
+      attached = true;
+      await debuggerApi.sendCommand(target, 'DOM.enable');
+      const { root } = await debuggerApi.sendCommand(target, 'DOM.getDocument', { depth: 1, pierce: true });
+      const { nodeId } = await debuggerApi.sendCommand(target, 'DOM.querySelector', { nodeId: root.nodeId, selector: message.selector });
+      if (!nodeId) return { unsupported: 'Selected element was not found in the page document.' };
+      const result: any = {};
+      if (message.matchedStyles) {
+        await debuggerApi.sendCommand(target, 'CSS.enable');
+        const styles = await debuggerApi.sendCommand(target, 'CSS.getMatchedStylesForNode', { nodeId });
+        result.matchedStyles = (styles.matchedCSSRules || []).slice(0, 20).map((item: any) => ({
+          selector: item.rule?.selectorList?.text,
+          origin: item.rule?.origin,
+          declarations: (item.rule?.style?.cssProperties || []).filter((p: any) => p.name && p.value && !p.disabled).slice(0, 30).map((p: any) => ({ name: p.name, value: p.value, important: p.important || false })),
+        }));
+      }
+      if (message.accessibilityTree) {
+        const ax = await debuggerApi.sendCommand(target, 'Accessibility.getPartialAXTree', { nodeId, fetchRelatives: false });
+        result.accessibilityTree = (ax.nodes || []).slice(0, 20).map((n: any) => ({
+          role: n.role?.value,
+          name: n.name?.value,
+          ignored: n.ignored,
+          properties: (n.properties || []).filter((p: any) => ['focusable','focused','disabled','checked','expanded','selected','level','required'].includes(p.name)).map((p: any) => ({ name: p.name, value: p.value?.value })),
+        }));
+      }
+      return result;
+    } finally {
+      if (attached) await debuggerApi.detach(target).catch(() => {});
+    }
+  }
 
   // ─── Broadcast message to all tabs (except excludeTabId) ──
   async function broadcastToTabs(type: string, data: any, excludeTabId?: number) {

@@ -11,6 +11,7 @@ import {
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
+  imageDataUrl?: string;
 }
 
 export interface StreamChatOptions {
@@ -288,7 +289,7 @@ async function streamWithOllama(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: state.ollamaModel,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      messages: messages.map(m => ({ role: m.role, content: m.content, ...(m.imageDataUrl ? { images: [m.imageDataUrl.replace(/^data:image\/[^;]+;base64,/, '')] } : {}) })),
       stream: true,
       think: true,   // Enable thinking/reasoning for supported models
       options: {
@@ -367,7 +368,7 @@ async function streamWithOpenAI(
   const headers = buildOpenAIHeaders(provider.apiKey);
   const body = buildOpenAIPayload(
     provider.model,
-    messages.map(m => ({ role: m.role, content: m.content })),
+    messages.map(m => ({ role: m.role, content: m.content, imageDataUrl: m.imageDataUrl })),
     { stream: true, reasoning: provider.reasoning }
   );
 

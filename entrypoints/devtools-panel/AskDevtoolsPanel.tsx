@@ -12,6 +12,39 @@ import { getBookmarkTree } from '../../utils/bookmarks';
 marked.setOptions({ breaks: true, gfm: true });
 
 const MARKDOWN_FORMAT_INSTRUCTION = '\n\nIMPORTANT: Always format your responses using markdown. Use headings, bullet points, code blocks, bold, italic, and other markdown features to make your responses well-structured and readable.';
+const redactSecrets = (value: string) => value
+  .replace(/(["']?(?:authorization|cookie|set-cookie|token|access_token|refresh_token|api[_-]?key|password|secret)["']?\s*[:=]\s*["']?)([^"'&,}\s]+)/gi, '$1[REDACTED]')
+  .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [REDACTED]');
+const redactUrl = (value: string) => {
+  try {
+    const u = new URL(value);
+    for (const k of [...u.searchParams.keys()]) if (/token|key|secret|auth|session|code|email/i.test(k)) u.searchParams.set(k, '[REDACTED]');
+    return u.toString();
+  } catch { return value; }
+};
+const safeJson = (value: unknown) => JSON.stringify(value, (_key, item) => typeof item === 'string' ? (item.startsWith('http://') || item.startsWith('https://') ? redactUrl(item) : redactSecrets(item)) : item);
+const sanitizeMarkdownHtml = (html: string) => {
+  const parsed = new DOMParser().parseFromString(html, 'text/html');
+  const allowed = new Set(['P', 'BR', 'STRONG', 'EM', 'DEL', 'BLOCKQUOTE', 'UL', 'OL', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'CODE', 'PRE', 'DIV', 'BUTTON', 'A', 'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD', 'HR']);
+  const visit = (node: ParentNode) => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child instanceof HTMLElement) {
+        if (!allowed.has(child.tagName)) { child.replaceWith(document.createTextNode(child.textContent || '')); continue; }
+        for (const attr of Array.from(child.attributes)) {
+          if (attr.name === 'class' || attr.name === 'title') continue;
+          if (child.tagName === 'A' && attr.name === 'href' && /^(https?:|mailto:)/i.test(attr.value)) continue;
+          child.removeAttribute(attr.name);
+        }
+        if (child.tagName === 'A' && !child.getAttribute('href')) child.removeAttribute('href');
+        visit(child);
+      } else if (child instanceof Element) {
+        child.replaceWith(document.createTextNode(child.textContent || ''));
+      }
+    }
+  };
+  visit(parsed.body);
+  return parsed.body.innerHTML;
+};
 
 export default function AskDevtoolsPanel() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -39,16 +72,28 @@ export default function AskDevtoolsPanel() {
     networkHeaders: true,
     networkCookies: true,
     networkPayload: true,
-    networkResponseBody: true,
-    networkDisplayMode: 'both',
-    includeHtml: true,
+    networkResponseBody: false,
+    networkDisplayMode: 'summary',
+    includeHtml: false,
     includeCss: false,
     includeJs: false,
     cookieValues: false,
     allowLargeBodies: false,
+    webVitals: true,
+    storage: true,
+    storageValues: false,
+    cookies: true,
+    screenshots: false,
+    liveConsole: false,
+    pwa: true,
+    security: true,
+    eventListeners: false,
+    matchedStyles: false,
+    accessibilityTree: false,
   });
   
   const [capturedData, setCapturedData] = useState<DevToolsData | null>(null);
+  const [savedCaptureContext, setSavedCaptureContext] = useState('');
   const [captureStatus, setCaptureStatus] = useState<string>('');
   const [isCapturing, setIsCapturing] = useState(false);
 
@@ -73,6 +118,79 @@ export default function AskDevtoolsPanel() {
   const sessionIdRef = useRef<string>(generateUUID());
   const harEntriesRef = useRef<any[]>([]);
   const requestCacheRef = useRef<any[]>([]);
+  const liveConsoleCleanupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!config.liveConsole) return;
+    if (liveConsoleCleanupTimerRef.current) {
+      clearTimeout(liveConsoleCleanupTimerRef.current);
+      liveConsoleCleanupTimerRef.current = null;
+    }
+    let cancelled = false;
+    const install = `(() => {
+      try {
+        if (window.__browserbotLiveConsole?.installed) return 'already-installed';
+        const records = window.__browserbotLiveLogs = window.__browserbotLiveLogs || [];
+        const stringify = value => {
+          try {
+            if (value instanceof Error) return value.message + (value.stack ? '\\n' + value.stack : '');
+            if (typeof value === 'object' && value !== null) return JSON.stringify(value, (k, v) => typeof v === 'function' ? '[Function]' : v);
+            return String(value);
+          } catch (_) { return '[Unserializable]'; }
+        };
+        const push = (level, text, stack = '') => {
+          records.push({ ts: Date.now(), level, text: String(text).slice(0, 4000), stack: String(stack).slice(0, 6000) });
+          if (records.length > 200) records.splice(0, records.length - 200);
+        };
+        const originals = {};
+        const wrappers = {};
+        for (const level of ['log', 'info', 'warn', 'error', 'debug']) {
+          originals[level] = console[level];
+          wrappers[level] = function(...args) {
+            push(level, args.map(stringify).join(' '), args.find(a => a instanceof Error)?.stack || '');
+            return originals[level]?.apply(this, args);
+          };
+          console[level] = wrappers[level];
+        }
+        const onError = event => push('error', event.message || 'JavaScript error', event.error?.stack || '');
+        const onRejection = event => push('error', 'Unhandled Promise: ' + stringify(event.reason), event.reason?.stack || '');
+        window.addEventListener('error', onError);
+        window.addEventListener('unhandledrejection', onRejection);
+        window.__browserbotLiveConsole = { installed: true, originals, wrappers, onError, onRejection };
+        return 'installed';
+      } catch (error) { return 'error:' + String(error); }
+    })()`;
+    browser.devtools.inspectedWindow.eval(install, (result: any, exceptionInfo: any) => {
+      if (cancelled) return;
+      if (exceptionInfo?.isException || exceptionInfo?.code) {
+        const message = exceptionInfo.description || exceptionInfo.value || 'inspection was blocked';
+        const detail = /cannot access a chrome-extension:\/\//i.test(String(message))
+          ? 'Chrome blocks this extension from inspecting another extension page.'
+          : message;
+        setCaptureStatus(`Live console unavailable: ${detail}`);
+      } else if (typeof result === 'string' && result.startsWith('error:')) {
+        setCaptureStatus(`Live console unavailable: ${result.slice(6)}`);
+      } else {
+        setCaptureStatus('Live console enabled. New console calls will be captured without reloading.');
+      }
+    });
+    return () => {
+      cancelled = true;
+      // React StrictMode mounts, cleans up, then mounts effects again in development.
+      // Delay restoration briefly so that remount can cancel it instead of racing install.
+      liveConsoleCleanupTimerRef.current = setTimeout(() => {
+        browser.devtools.inspectedWindow.eval(`(() => {
+          const state = window.__browserbotLiveConsole;
+          if (!state?.installed) return;
+          for (const level of Object.keys(state.wrappers)) if (console[level] === state.wrappers[level]) console[level] = state.originals[level];
+          window.removeEventListener('error', state.onError);
+          window.removeEventListener('unhandledrejection', state.onRejection);
+          delete window.__browserbotLiveConsole;
+        })()`, () => {});
+        liveConsoleCleanupTimerRef.current = null;
+      }, 250);
+    };
+  }, [config.liveConsole]);
 
   useEffect(() => {
     const onReq = (req: any) => requestCacheRef.current.push(req);
@@ -177,13 +295,19 @@ export default function AskDevtoolsPanel() {
       updatedAt: Date.now(),
       pageUrl: 'DevTools',
       pageTitle: 'DevTools',
-      messages: messages
+      messages: messages,
+      devtoolsCapture: getPersistedCapture(),
+      devtoolsContext: capturedData ? (savedCaptureContext || await buildContextData()) : undefined,
+      devtoolsConfig: capturedData ? config : undefined,
+      devtoolsSelection: capturedData ? { logIds: [...selectedLogIds], networkIds: [...selectedNetworkIds], dom: includeDom, performance: includePerf } : undefined,
     };
     if (!activeConversationId) {
       setActiveConversationId(conversation.id);
     }
-    browser.runtime.sendMessage({ type: 'SAVE_CONVERSATION', conversation }).catch(() => {});
-    loadConversations();
+    browser.runtime.sendMessage({ type: 'SAVE_CONVERSATION', conversation }).then((saved: boolean) => {
+      if (saved) loadConversations();
+      else setCaptureStatus('Conversation could not be saved within local storage limits. Remove older conversations or large captures.');
+    }).catch(() => setCaptureStatus('Conversation could not be saved.'));
   };
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -191,10 +315,13 @@ export default function AskDevtoolsPanel() {
     if (messages.length === 0 || isStreaming) return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => saveCurrentConversation(), 1000);
-  }, [messages, isStreaming]);
+  }, [messages, isStreaming, capturedData, config, includeDom, includePerf, selectedLogIds, selectedNetworkIds]);
 
   const startNewChat = () => {
     setMessages([]);
+    setCapturedData(null);
+    setSavedCaptureContext('');
+    harEntriesRef.current = [];
     setActiveConversationId(null);
     sessionIdRef.current = generateUUID();
     streamingContentRef.current = '';
@@ -203,6 +330,14 @@ export default function AskDevtoolsPanel() {
 
   const loadConversation = (conv: Conversation) => {
     setMessages(conv.messages);
+    setCapturedData(conv.devtoolsCapture || null);
+    setSavedCaptureContext(conv.devtoolsContext || '');
+    if (conv.devtoolsConfig) setConfig(conv.devtoolsConfig);
+    harEntriesRef.current = [];
+    setSelectedLogIds(new Set(conv.devtoolsSelection?.logIds || (conv.devtoolsCapture?.logs || []).map((l: any) => l.id)));
+    setSelectedNetworkIds(new Set(conv.devtoolsSelection?.networkIds || (conv.devtoolsCapture?.network || []).map((n: any) => n.id)));
+    setIncludeDom(conv.devtoolsSelection?.dom ?? !!conv.devtoolsCapture?.dom);
+    setIncludePerf(conv.devtoolsSelection?.performance ?? !!conv.devtoolsCapture?.performance);
     setActiveConversationId(conv.id);
     setShowHistory(false);
   };
@@ -217,6 +352,21 @@ export default function AskDevtoolsPanel() {
     setMessages([]);
     setActiveConversationId(null);
     streamingContentRef.current = '';
+  };
+
+  const updateConfig = (next: DevToolsConfig) => {
+    setConfig(next);
+    setSavedCaptureContext('');
+  };
+
+  const getPersistedCapture = (): DevToolsData | undefined => {
+    if (!capturedData) return undefined;
+    const copy = JSON.parse(JSON.stringify(capturedData)) as DevToolsData;
+    if (!config.storageValues && copy.storage) for (const area of ['localStorage', 'sessionStorage']) for (const item of Object.values(copy.storage[area] || {}) as any[]) delete item.value;
+    if (!config.cookieValues) copy.cookies = copy.cookies?.map(c => { const item = { ...c }; delete item.value; return item; });
+    if (!config.screenshots) delete copy.screenshot;
+    if (!config.eventListeners && copy.dom) delete copy.dom.listeners;
+    return copy;
   };
 
   const scrollToBottom = useCallback(() => {
@@ -238,11 +388,11 @@ export default function AskDevtoolsPanel() {
           return String(o);
         } catch(e) { return '[Unserializable]'; }
       };
-      console.log = function(...args) { window.__browserbotLogs.push({ ts: Date.now(), level: 'log', text: args.map(safeStr).join(' ') }); _log.apply(console, args); };
-      console.warn = function(...args) { window.__browserbotLogs.push({ ts: Date.now(), level: 'warn', text: args.map(safeStr).join(' ') }); _warn.apply(console, args); };
-      console.error = function(...args) { window.__browserbotLogs.push({ ts: Date.now(), level: 'error', text: args.map(safeStr).join(' '), stack: args[0] && args[0].stack ? args[0].stack : '' }); _error.apply(console, args); };
-      window.addEventListener('error', (e) => window.__browserbotLogs.push({ ts: Date.now(), level: 'error', text: e.message, stack: e.error?.stack }));
-      window.addEventListener('unhandledrejection', (e) => window.__browserbotLogs.push({ ts: Date.now(), level: 'error', text: 'Unhandled Promise: ' + String(e.reason) }));
+      console.log = function(...args) { window.__browserbotLogs.push({ ts: Date.now(), level: 'log', text: args.map(safeStr).join(' ').slice(0,4000) }); if(window.__browserbotLogs.length>500)window.__browserbotLogs.shift(); _log.apply(console, args); };
+      console.warn = function(...args) { window.__browserbotLogs.push({ ts: Date.now(), level: 'warn', text: args.map(safeStr).join(' ').slice(0,4000) }); if(window.__browserbotLogs.length>500)window.__browserbotLogs.shift(); _warn.apply(console, args); };
+      console.error = function(...args) { window.__browserbotLogs.push({ ts: Date.now(), level: 'error', text: args.map(safeStr).join(' ').slice(0,4000), stack: args[0] && args[0].stack ? String(args[0].stack).slice(0,6000) : '' }); if(window.__browserbotLogs.length>500)window.__browserbotLogs.shift(); _error.apply(console, args); };
+      window.addEventListener('error', (e) => window.__browserbotLogs.push({ ts: Date.now(), level: 'error', text: String(e.message).slice(0,4000), stack: String(e.error?.stack||'').slice(0,6000) }));
+      window.addEventListener('unhandledrejection', (e) => window.__browserbotLogs.push({ ts: Date.now(), level: 'error', text: ('Unhandled Promise: ' + String(e.reason)).slice(0,4000) }));
     `;
     browser.devtools.inspectedWindow.reload({ injectedScript: script });
     setCaptureStatus('Logger injected & page reloading.');
@@ -252,7 +402,8 @@ export default function AskDevtoolsPanel() {
     setIsCapturing(true);
     setCaptureStatus('Capturing from DevTools...');
     try {
-      const data: DevToolsData = {};
+      const data: DevToolsData = { captureId: generateUUID() };
+      let warning = '';
 
       const metaRes = await new Promise((resolve) => {
         browser.devtools.inspectedWindow.eval(`
@@ -263,7 +414,7 @@ export default function AskDevtoolsPanel() {
                 title: document.title,
                 userAgent: navigator.userAgent,
                 viewport: window.innerWidth + 'x' + window.innerHeight,
-                framework: (window.angular ? 'Angular ' : '') + (window.React ? 'React ' : '') + ((window as any).__vue__ ? 'Vue ' : ''),
+                framework: (window.angular || (window as any).ng ? 'Angular ' : '') + (window.React || (window as any).__REACT_DEVTOOLS_GLOBAL_HOOK__ ? 'React ' : '') + ((window as any).__vue__ || (window as any).__VUE_DEVTOOLS_GLOBAL_HOOK__ ? 'Vue ' : ''),
                 localKeys: Object.keys(localStorage || {}),
                 sessionKeys: Object.keys(sessionStorage || {})
               };
@@ -272,6 +423,27 @@ export default function AskDevtoolsPanel() {
         `, (result, isException) => resolve(isException ? null : result));
       });
       if (metaRes) data.metadata = metaRes;
+
+      if (config.storage) {
+        await new Promise<void>((resolve) => browser.devtools.inspectedWindow.eval(`(function(){try{
+          const summarize=(s,include)=>{const out={};let budget=10000;for(let i=0;i<Math.min(s.length,100);i++){const k=s.key(i);const v=s.getItem(k)||'';const n=Math.min(512,budget,v.length);const sensitive=/token|secret|password|auth|session|cookie|key/i.test(k);out[k]={length:v.length,...(include&&!sensitive&&n>0?{value:v.slice(0,n)}:{})};if(include&&!sensitive)budget-=n;}return out;};
+          window.__browserbotStorageSnapshot={localStorage:summarize(localStorage,${Boolean(config.storageValues)}),sessionStorage:summarize(sessionStorage,${Boolean(config.storageValues)}),indexedDB:[],cacheNames:[],quota:null};
+          Promise.all([indexedDB.databases?indexedDB.databases():Promise.resolve([]),window.caches?caches.keys():Promise.resolve([]),navigator.storage?.estimate?navigator.storage.estimate():Promise.resolve(null)]).then(([db,cache,quota])=>{window.__browserbotStorageSnapshot.indexedDB=(db||[]).slice(0,50).map(x=>({name:x.name,version:x.version}));window.__browserbotStorageSnapshot.cacheNames=(cache||[]).slice(0,50);window.__browserbotStorageSnapshot.quota=quota?{usage:quota.usage,quota:quota.quota}:null;});
+        }catch(e){window.__browserbotStorageSnapshot={error:String(e)}}})()`, () => resolve()));
+        await new Promise(resolve => setTimeout(resolve, 150));
+        const storageRes = await new Promise<any>((resolve) => browser.devtools.inspectedWindow.eval('window.__browserbotStorageSnapshot || null', (result: any, ex: any) => resolve(ex ? null : result)));
+        if (storageRes) data.storage = storageRes;
+      }
+
+      if (config.webVitals) {
+        const vitals = await new Promise<any>((resolve) => browser.devtools.inspectedWindow.eval(`(function(){try{
+          window.__browserbotVitals=window.__browserbotVitals||{lcp:null,cls:0,inpCandidate:0,layoutShifts:[],longTasks:[],interactions:[]};
+          if(!window.__browserbotVitalsObserver){window.__browserbotVitalsObserver=true;for(const type of ['largest-contentful-paint','layout-shift','longtask','event']){try{new PerformanceObserver(list=>{for(const e of list.getEntries()){if(type==='largest-contentful-paint')window.__browserbotVitals.lcp=Math.round(e.startTime);if(type==='layout-shift'&&!e.hadRecentInput){window.__browserbotVitals.layoutShifts.push({start:Math.round(e.startTime),value:e.value});window.__browserbotVitals.cls+=e.value;}if(type==='longtask')window.__browserbotVitals.longTasks.push({start:Math.round(e.startTime),duration:Math.round(e.duration)});if(type==='event'){window.__browserbotVitals.inpCandidate=Math.max(window.__browserbotVitals.inpCandidate,Math.round(e.duration));window.__browserbotVitals.interactions.push({name:e.name,duration:Math.round(e.duration),start:Math.round(e.startTime)});}}window.__browserbotVitals.layoutShifts=window.__browserbotVitals.layoutShifts.slice(-20);window.__browserbotVitals.longTasks=window.__browserbotVitals.longTasks.slice(-20);window.__browserbotVitals.interactions=window.__browserbotVitals.interactions.slice(-20);}).observe({type,buffered:true,durationThreshold:16});}catch(_){}}}
+          const nav=performance.getEntriesByType('navigation')[0];
+          return {...window.__browserbotVitals,navigation:nav?{responseStart:Math.round(nav.responseStart),domInteractive:Math.round(nav.domInteractive),loadEventEnd:Math.round(nav.loadEventEnd)}:null};
+        }catch(e){return null}})()`, (result: any, ex: any) => resolve(ex ? null : result)));
+        if (vitals) data.vitals = vitals;
+      }
 
       if (config.performance) {
         const perfRes = await new Promise((resolve) => {
@@ -323,46 +495,101 @@ export default function AskDevtoolsPanel() {
       }
 
       if (config.dom) {
-        const domRes = await new Promise((resolve) => {
+        const domRes = await new Promise<any>((resolve) => {
           browser.devtools.inspectedWindow.eval(`
             (function() {
               try {
                 const el = $0;
                 if (!el) return null;
                 const rect = el.getBoundingClientRect();
+                const style = getComputedStyle(el);
+                const computedStyle = Object.fromEntries(['display','position','boxSizing','width','height','margin','padding','fontSize','fontFamily','lineHeight','color','backgroundColor','overflow','zIndex','flex','gridTemplateColumns'].map(k => [k, style[k]]));
+                const selectorParts = []; let cursor = el;
+                while (cursor && cursor.nodeType === 1 && selectorParts.length < 8) { let part = cursor.tagName.toLowerCase(); if (cursor.id) { part += '#' + cursor.id; selectorParts.unshift(part); break; } const same = Array.from(cursor.parentElement?.children || []).filter(x => x.tagName === cursor.tagName); if (same.length > 1) part += ':nth-of-type(' + (same.indexOf(cursor) + 1) + ')'; selectorParts.unshift(part); cursor = cursor.parentElement; }
+                let listeners = null; try { if (${Boolean(config.eventListeners)} && typeof getEventListeners === 'function') listeners = Object.fromEntries(Object.entries(getEventListeners(el)).map(([type, items]) => [type, items.length])); } catch (_) {}
                 return {
                   tag: el.tagName,
                   id: el.id,
                   className: el.className,
                   text: el.textContent ? el.textContent.slice(0, 500) : '',
-                  html: el.outerHTML ? el.outerHTML.slice(0, 1000) : '',
-                  attributes: Array.from(el.attributes).map(a => ({name: a.name, value: a.value})),
-                  rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
+                  html: (() => { const clone = el.cloneNode(true); for (const input of Array.from(clone.querySelectorAll('input,textarea,select'))) { input.removeAttribute('value'); if ('value' in input) input.value = ''; } return clone.outerHTML.slice(0, 1000); })(),
+                  attributes: Array.from(el.attributes).filter(a => a.name.toLowerCase() !== 'value' && !/token|secret|password|authorization/i.test(a.name)).map(a => ({name: a.name, value: a.value})),
+                  rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
+                  computedStyle,
+                  accessibility: { role: el.getAttribute('role') || el.tagName.toLowerCase(), label: el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent?.trim().slice(0,160) || '' },
+                  selector: selectorParts.join(' > '),
+                  listeners
                 };
               } catch(e) { return null; }
             })()
           `, (result, isException) => resolve(isException ? null : result));
         });
-        if (domRes) data.dom = domRes;
+        if (domRes) {
+          data.dom = domRes;
+          if ((config.matchedStyles || config.accessibilityTree) && domRes.selector) {
+            try {
+              const cdp = await browser.runtime.sendMessage({ type: 'GET_DEVTOOLS_ELEMENT_CDP', tabId: browser.devtools.inspectedWindow.tabId, selector: domRes.selector, matchedStyles: config.matchedStyles, accessibilityTree: config.accessibilityTree });
+              if (cdp?.matchedStyles) data.dom.matchedStyles = cdp.matchedStyles;
+              if (cdp?.accessibilityTree) data.dom.accessibilityTree = cdp.accessibilityTree;
+              if (cdp?.unsupported) data.dom.cdpNote = cdp.unsupported;
+              if (cdp?.error) data.dom.cdpNote = cdp.error;
+            } catch (_) { data.dom.cdpNote = 'CDP capture unavailable for this browser/target.'; }
+          }
+        }
       }
 
-      if (config.network) {
+      if (config.network || config.security) {
         const harLog = await new Promise<any>((resolve) => {
           browser.devtools.network.getHAR((har) => resolve(har));
         });
         if (harLog && harLog.entries) {
           harEntriesRef.current = harLog.entries;
-          data.network = harLog.entries.map((entry: any, idx: number) => ({
+          if (config.network) data.network = harLog.entries.map((entry: any, idx: number) => ({
             id: 'net_' + idx,
             method: entry.request.method,
-            url: entry.request.url,
+            url: redactUrl(entry.request.url),
             status: entry.response.status,
             duration: Math.round(entry.time),
             mimeType: entry.response.content?.mimeType,
             size: entry.response.content?.size,
             initiator: inferInitiator(entry)
-          }));
+          })).sort((a: any, b: any) => Number(b.status >= 400) - Number(a.status >= 400) || Number(b.duration > 1000) - Number(a.duration > 1000)).slice(0, 100);
         }
+      }
+
+      if (config.cookies && data.metadata?.url) {
+        try {
+          const cookieResult = await browser.runtime.sendMessage({ type: 'GET_DEVTOOLS_COOKIES', url: data.metadata.url, includeValues: config.cookieValues });
+          if (Array.isArray(cookieResult)) data.cookies = cookieResult;
+        } catch (_) { data.cookies = []; }
+      }
+
+      if (config.security) {
+        data.security = await new Promise<any>((resolve) => browser.devtools.inspectedWindow.eval(`(function(){try{return {pageProtocol:location.protocol,mixedContentCandidates:Array.from(document.querySelectorAll('img[src],script[src],link[href],iframe[src]')).map(e=>e.src||e.href).filter(u=>location.protocol==='https:'&&u.startsWith('http:')).slice(0,50),cspMeta:Array.from(document.querySelectorAll('meta[http-equiv="Content-Security-Policy"]')).map(e=>e.content),permissionsPolicyMeta:Array.from(document.querySelectorAll('meta[http-equiv="Permissions-Policy"]')).map(e=>e.content)}}catch(e){return null}})()`, (result: any, ex: any) => resolve(ex ? null : result)));
+        const documentRequest = harEntriesRef.current.find((e: any) => e._resourceType === 'document' || e.request?.url === data.metadata?.url);
+        if (data.security && documentRequest?.response?.headers) {
+          const securityHeaders = new Set(['content-security-policy','content-security-policy-report-only','strict-transport-security','permissions-policy','x-content-type-options','x-frame-options','referrer-policy','cross-origin-opener-policy','cross-origin-embedder-policy','cross-origin-resource-policy']);
+          data.security.responseHeaders = documentRequest.response.headers.filter((h: any) => securityHeaders.has(String(h.name).toLowerCase())).map((h: any) => ({ name: h.name, value: redactSecrets(redactUrl(h.value)) }));
+        }
+        if (data.security && data.cookies) data.security.cookieFlags = data.cookies.map(c => ({ name: c.name, secure: c.secure, httpOnly: c.httpOnly, sameSite: c.sameSite, session: c.session }));
+      }
+
+      if (config.pwa) {
+        await new Promise<void>((resolve) => browser.devtools.inspectedWindow.eval(`(function(){try{
+          window.__browserbotPwa={registrations:[],manifestUrl:document.querySelector('link[rel="manifest"]')?.href||null,manifest:null};
+          Promise.all([navigator.serviceWorker?.getRegistrations?.()||Promise.resolve([]),window.__browserbotPwa.manifestUrl?fetch(window.__browserbotPwa.manifestUrl).then(r=>r.json()).catch(()=>null):Promise.resolve(null)]).then(([regs,manifest])=>{window.__browserbotPwa.registrations=regs.slice(0,20).map(r=>({scope:r.scope,activeScript:r.active?.scriptURL,state:r.active?.state,waitingScript:r.waiting?.scriptURL}));window.__browserbotPwa.manifest=manifest?{name:manifest.name,short_name:manifest.short_name,start_url:manifest.start_url,display:manifest.display,theme_color:manifest.theme_color,icons:(manifest.icons||[]).slice(0,10).map(i=>({src:i.src,sizes:i.sizes,type:i.type}))}:null;});
+        }catch(e){window.__browserbotPwa={error:String(e)}}})()`, () => resolve()));
+        await new Promise(resolve => setTimeout(resolve, 150));
+        data.pwa = await new Promise<any>((resolve) => browser.devtools.inspectedWindow.eval('window.__browserbotPwa || null', (result: any, ex: any) => resolve(ex ? null : result)));
+      }
+
+      if (config.screenshots) {
+        try {
+          const screenshotResult = await browser.runtime.sendMessage({ type: 'CAPTURE_DEVTOOLS_SCREENSHOT', tabId: browser.devtools.inspectedWindow.tabId });
+          if (screenshotResult?.dataUrl && screenshotResult.dataUrl.length <= 500000) data.screenshot = screenshotResult.dataUrl;
+          else if (screenshotResult?.dataUrl) warning = ' Screenshot skipped because it exceeded the 500 KB attachment limit.';
+          else if (screenshotResult?.error) warning = ` Screenshot unavailable: ${screenshotResult.error}`;
+        } catch (error: any) { warning = ` Screenshot unavailable: ${error?.message || 'capture failed'}`; }
       }
 
       if (config.console) {
@@ -370,11 +597,25 @@ export default function AskDevtoolsPanel() {
           browser.devtools.inspectedWindow.eval('window.__browserbotLogs || []', (result, isException) => resolve(isException ? [] : result));
         });
         if (logsRes && Array.isArray(logsRes)) {
-          data.logs = logsRes.map((l: any, idx: number) => ({ ...l, id: 'log_' + idx }));
+          data.logs = logsRes.slice(-200).map((l: any, idx: number) => ({ ...l, id: 'log_' + idx }));
         }
+      }
+      if (config.liveConsole) {
+        const liveLogs = await new Promise<any[]>((resolve) => {
+          browser.devtools.inspectedWindow.eval('window.__browserbotLiveLogs || []', (result: any, isException: any) => resolve(isException || !Array.isArray(result) ? [] : result));
+        });
+        const existing = new Set((data.logs || []).map(l => `${l.ts}|${l.level}|${l.text}|${l.stack || ''}`));
+        const live = liveLogs.map((l, idx) => ({ ...l, id: `live_${idx}` })).filter(l => {
+          const key = `${l.ts}|${l.level}|${l.text}|${l.stack || ''}`;
+          if (existing.has(key)) return false;
+          existing.add(key);
+          return true;
+        });
+        data.logs = [...(data.logs || []), ...live];
       }
 
       setCapturedData(data);
+      setSavedCaptureContext('');
       
       // Select all by default
       if (data.logs) setSelectedLogIds(new Set(data.logs.map(l => l.id)));
@@ -386,7 +627,7 @@ export default function AskDevtoolsPanel() {
       if (!data.dom) statusMsg += '(No element selected in Elements tab. ';
       else statusMsg += '(' + data.dom.tag + ' element. ';
       
-      setCaptureStatus(statusMsg + ')');
+      setCaptureStatus(statusMsg + ')' + warning);
     } catch (e: any) {
       setCaptureStatus(`Error: ${e.message}`);
     }
@@ -396,7 +637,7 @@ export default function AskDevtoolsPanel() {
   const buildPreamble = () => {
     const meta = capturedData?.metadata;
     return (devtoolsSystemPrompt || DEFAULT_DEVTOOLS_SYSTEM_PROMPT)
-      .replace(/{url}/g,                meta?.url           || '')
+      .replace(/{url}/g,                meta?.url ? redactUrl(meta.url) : '')
       .replace(/{pageTitle}/g,          meta?.title         || '')
       .replace(/{userAgent}/g,          meta?.userAgent     || '')
       .replace(/{viewport}/g,           meta?.viewport      || '')
@@ -408,12 +649,16 @@ export default function AskDevtoolsPanel() {
 
   const buildContextData = async (): Promise<string> => {
     if (!capturedData) return '';
+    if (savedCaptureContext && harEntriesRef.current.length === 0) return savedCaptureContext;
     let prompt = '';
+    const selectedLogCount = capturedData.logs?.filter(l => selectedLogIds.has(l.id)).length || 0;
+    const selectedNetworkCount = capturedData.network?.filter(n => selectedNetworkIds.has(n.id)).length || 0;
+    prompt += `## Capture ${capturedData.captureId || 'snapshot'}\nPage: ${redactUrl(capturedData.metadata?.url || '(unknown)')}\nIncluded: ${selectedLogCount} console entries, ${selectedNetworkCount} network requests${includeDom && capturedData.dom ? ', selected element $0' : ''}${includePerf && capturedData.performance ? ', navigation/performance' : ''}${config.webVitals && capturedData.vitals ? ', Web Vitals' : ''}${config.storage && capturedData.storage ? ', storage inventory' : ''}${config.cookies && capturedData.cookies?.length ? ', cookie metadata' : ''}${config.screenshots && capturedData.screenshot ? ', screenshot attachment' : ''}\n\n`;
 
     if (capturedData?.metadata) {
       const m = capturedData.metadata;
       prompt += `## Capture Metadata\n`;
-      prompt += `- **URL**: ${m.url}\n`;
+      prompt += `- **URL**: ${redactUrl(m.url || '')}\n`;
       prompt += `- **Timestamp**: ${new Date().toISOString()}\n`;
       if (m.framework) prompt += `- **Framework**: ${m.framework}(detected)\n`;
       prompt += `- **User Agent**: ${m.userAgent}\n`;
@@ -422,63 +667,81 @@ export default function AskDevtoolsPanel() {
       if (m.sessionKeys?.length) prompt += `- **Session Storage Keys**: ${m.sessionKeys.join(', ')}\n`;
       prompt += '\n';
     }
-    
+
     if (capturedData?.logs?.length && selectedLogIds.size > 0) {
       prompt += `## Console Logs\n`;
-      capturedData.logs.filter(l => selectedLogIds.has(l.id)).forEach(l => {
-        prompt += `[${new Date(l.ts).toISOString()}] [${l.level.toUpperCase()}] ${l.text}\n`;
-        if (l.stack) prompt += `Stack:\n${l.stack}\n`;
+      const logGroups = new Map<string, { log: any; count: number }>();
+      capturedData.logs.filter(l => selectedLogIds.has(l.id)).forEach(log => {
+        const key = `${log.level}|${log.text}|${log.stack || ''}`;
+        const group = logGroups.get(key);
+        if (group) group.count++; else logGroups.set(key, { log, count: 1 });
       });
+      for (const { log, count } of logGroups.values()) {
+        prompt += `[${log.id}] [${new Date(log.ts).toISOString()}] [${log.level.toUpperCase()}] ${redactSecrets(log.text)}${count > 1 ? ` (repeated ${count} times)` : ''}\n`;
+        if (log.stack) prompt += `Stack:\n${redactSecrets(log.stack).slice(0, 6000)}\n`;
+      }
       prompt += '\n';
     }
     
     if (capturedData?.network?.length && selectedNetworkIds.size > 0) {
       const selectedNet = capturedData.network.filter(n => selectedNetworkIds.has(n.id));
+      const networkGroups = new Map<string, { entry: any; count: number; minTime: number; maxTime: number }>();
+      for (const entry of selectedNet) {
+        const key = `${entry.method}|${entry.url}|${entry.status}|${entry.mimeType || ''}`;
+        const group = networkGroups.get(key);
+        if (group) { group.count++; group.minTime = Math.min(group.minTime, entry.duration); group.maxTime = Math.max(group.maxTime, entry.duration); }
+        else networkGroups.set(key, { entry, count: 1, minTime: entry.duration, maxTime: entry.duration });
+      }
       
       if (config.networkDisplayMode === 'summary' || config.networkDisplayMode === 'both') {
         prompt += `## Network Summary (${selectedNet.length} requests)\n`;
-        prompt += `| URL | Method | Status | Time | Size | Initiator | Flag |\n`;
-        prompt += `|-----|--------|--------|------|------|-----------|------|\n`;
-        for (const n of selectedNet) {
+        prompt += `| ID | URL | Method | Status | Time | Size | Initiator | Flag |\n`;
+        prompt += `|----|-----|--------|--------|------|------|-----------|------|\n`;
+        for (const { entry: n, count, minTime, maxTime } of networkGroups.values()) {
           let flag = '';
           if (n.status >= 400) flag = '❌ FAILED';
           else if (n.duration > 1000) flag = '⚠️ SLOW';
           const sizeStr = n.size ? Math.round(n.size / 1024) + 'KB' : '-';
           const init = (n as any).initiator || '-';
-          prompt += `| ${n.url} | ${n.method} | ${n.status} | ${n.duration}ms | ${sizeStr} | ${init} | ${flag} |\n`;
+          prompt += `| ${n.id} | ${n.url} | ${n.method} | ${n.status} | ${minTime === maxTime ? `${minTime}ms` : `${minTime}-${maxTime}ms`} | ${sizeStr} | ${init} | ${flag}${count > 1 ? ` (${count}×)` : ''} |\n`;
         }
         prompt += '\n';
       }
 
       if (config.networkDisplayMode === 'details' || config.networkDisplayMode === 'both') {
         prompt += `## Network Details\n`;
+        let remainingBodyChars = config.allowLargeBodies ? 100000 : 20000;
+        const detailed = new Set<string>();
         for (const n of selectedNet) {
+          const detailKey = `${n.method}|${n.url}|${n.status}|${n.mimeType || ''}`;
+          if (detailed.has(detailKey)) continue;
+          detailed.add(detailKey);
           const rawIdx = parseInt(n.id.split('_')[1]);
           const rawEntry = harEntriesRef.current[rawIdx];
-          prompt += `### ${n.method} ${n.url} - Status: ${n.status} (${n.duration}ms) ${n.mimeType || ''} ${n.size ? n.size + 'B' : ''}\n`;
+          prompt += `### ${n.id} ${n.method} ${n.url} - Status: ${n.status} (${n.duration}ms) ${n.mimeType || ''} ${n.size ? n.size + 'B' : ''}\n`;
           
           if (rawEntry) {
             if (config.networkHeaders) {
                if (rawEntry.request?.headers?.length) {
                  const filteredReqHeaders = rawEntry.request.headers.filter((h: any) => h.name.toLowerCase() !== 'cookie');
-                 prompt += `**Request Headers:**\n` + filteredReqHeaders.map((h: any) => `${h.name}: ${h.value}`).join('\n') + '\n';
+                 prompt += `**Request Headers:**\n` + filteredReqHeaders.map((h: any) => `${h.name}: ${/authorization|token|secret|api[-_]?key/i.test(h.name) ? '[REDACTED]' : redactSecrets(h.value)}`).join('\n') + '\n';
                }
                if (rawEntry.response?.headers?.length) {
                  const filteredResHeaders = rawEntry.response.headers.filter((h: any) => h.name.toLowerCase() !== 'set-cookie');
-                 prompt += `**Response Headers:**\n` + filteredResHeaders.map((h: any) => `${h.name}: ${h.value}`).join('\n') + '\n';
+                 prompt += `**Response Headers:**\n` + filteredResHeaders.map((h: any) => `${h.name}: ${/authorization|token|secret|api[-_]?key/i.test(h.name) ? '[REDACTED]' : redactSecrets(h.value)}`).join('\n') + '\n';
                }
             }
             if (config.networkCookies) {
                if (rawEntry.request?.cookies?.length) {
-                 prompt += `**Cookies:**\n` + rawEntry.request.cookies.map((c: any) => config.cookieValues ? `${c.name}=${c.value}` : c.name).join('; ') + '\n';
+                        prompt += `**Cookies:**\n` + rawEntry.request.cookies.map((c: any) => config.cookieValues ? `${c.name}=${String(c.value || '').slice(0, 256)}` : c.name).join('; ') + '\n';
                }
             }
             if (config.networkPayload && rawEntry.request?.postData) {
                const pd = rawEntry.request.postData;
                if (pd.text) {
-                 prompt += `**Request Payload:**\n${pd.text}\n`;
+                prompt += `**Request Payload:**\n${redactSecrets(pd.text)}\n`;
                } else if (pd.params && pd.params.length) {
-                 prompt += `**Request Payload:**\n${pd.params.map((p: any) => p.name + '=' + p.value).join('&')}\n`;
+                 prompt += `**Request Payload:**\n${redactSecrets(pd.params.map((p: any) => p.name + '=' + p.value).join('&'))}\n`;
                }
             }
             if (config.networkResponseBody) {
@@ -494,7 +757,7 @@ export default function AskDevtoolsPanel() {
                else if (isJs && config.includeJs) shouldFetch = true;
                else if (mime.includes('text') && !isHtml && !isCss && !isJs) shouldFetch = true;
 
-               if (shouldFetch) {
+               if (shouldFetch && remainingBodyChars > 0) {
                   const sizeLimit = config.allowLargeBodies ? 5000000 : 50000;
                   if (n.size && n.size > sizeLimit) {
                     prompt += `**Response Body:** (Skipped, size ${Math.round(n.size/1024)}KB exceeds threshold)\n`;
@@ -552,7 +815,9 @@ export default function AskDevtoolsPanel() {
                      }
                    });
                      if (body) {
-                       prompt += `**Response Body:**\n\`\`\`\n${body.slice(0, sizeLimit)}${body.length > sizeLimit ? '\n...[TRUNCATED]' : ''}\n\`\`\`\n`;
+                  const bodyLimit = Math.min(sizeLimit, remainingBodyChars);
+                  prompt += `**Response Body:**\n\`\`\`\n${redactSecrets(body).slice(0, bodyLimit)}${body.length > bodyLimit ? '\n...[TRUNCATED]' : ''}\n\`\`\`\n`;
+                  remainingBodyChars -= Math.min(body.length, bodyLimit);
                      }
                   } catch(e) {}
                   }
@@ -571,6 +836,12 @@ export default function AskDevtoolsPanel() {
       if (capturedData.dom.html) prompt += `HTML Snippet: ${capturedData.dom.html}\n`;
       prompt += `Text Snippet: ${capturedData.dom.text}\n`;
       prompt += `Rect: ${JSON.stringify(capturedData.dom.rect)}\n\n`;
+      if (capturedData.dom.computedStyle) prompt += `Computed Styles: ${JSON.stringify(capturedData.dom.computedStyle)}\n`;
+      if (config.eventListeners && capturedData.dom.listeners) prompt += `Event Listener Counts: ${JSON.stringify(capturedData.dom.listeners)}\n`;
+      if (config.matchedStyles && capturedData.dom.matchedStyles) prompt += `Matched CSS Rules: ${JSON.stringify(capturedData.dom.matchedStyles)}\n`;
+      if (config.accessibilityTree && capturedData.dom.accessibilityTree) prompt += `Accessibility Node: ${JSON.stringify(capturedData.dom.accessibilityTree)}\n`;
+      if (capturedData.dom.cdpNote) prompt += `CDP: ${capturedData.dom.cdpNote}\n`;
+      prompt += '\n';
     }
     
     if (includePerf && capturedData?.performance) {
@@ -586,6 +857,24 @@ export default function AskDevtoolsPanel() {
         prompt += `Memory: ${JSON.stringify(capturedData.performance.memory, null, 2)}\n`;
       }
       prompt += '\n';
+    }
+
+    if (config.storage && capturedData.storage) {
+      const storage = JSON.parse(JSON.stringify(capturedData.storage));
+      if (!config.storageValues) for (const area of ['localStorage', 'sessionStorage']) for (const item of Object.values(storage[area] || {}) as any[]) delete item.value;
+      prompt += `## Storage Inventory (${config.storageValues ? 'values opted in; sensitive-key values remain redacted' : 'values excluded'})\n${redactSecrets(JSON.stringify(storage))}\n\n`;
+    }
+    if (config.cookies && capturedData.cookies?.length) {
+      const cookies = capturedData.cookies.map(c => { const copy = { ...c }; if (!config.cookieValues) delete (copy as any).value; return copy; });
+      prompt += `## Cookie Metadata (values ${config.cookieValues ? 'explicitly included' : 'redacted'})\n${JSON.stringify(cookies)}\n\n`;
+    }
+    if (config.webVitals && capturedData.vitals) {
+      prompt += `## Web Performance Signals\n${JSON.stringify(capturedData.vitals)}\n\n`;
+    }
+    if (config.security && capturedData.security) prompt += `## Security Signals\n${safeJson(capturedData.security)}\n\n`;
+    if (config.pwa && capturedData.pwa) prompt += `## PWA / Service Worker\n${safeJson(capturedData.pwa)}\n\n`;
+    if (config.screenshots && capturedData.screenshot) {
+      prompt += `## Screenshot\n${providerType === 'chrome_ai' ? 'The screenshot is captured but is not sent because Chrome AI currently receives text only.' : 'A screenshot image is attached to this user turn; image support depends on the selected model/provider.'}\n\n`;
     }
 
     return prompt.trim();
@@ -618,6 +907,9 @@ export default function AskDevtoolsPanel() {
   const sendMessage = async (textOverride?: string) => {
     const text = (textOverride !== undefined ? textOverride : input).trim();
     if (isStreaming || !text) return;
+    if (config.screenshots && capturedData?.screenshot && providerType === 'chrome_ai') {
+      setCaptureStatus('Screenshot captured, but Chrome AI receives text only. Select an image-capable Ollama or OpenAI-compatible model to send it.');
+    }
 
     // Secret unlock / lock command interception
     const unlockCmd = (copyPasteUnlockCommand || '/unlockMySecrets3038').trim().toLowerCase();
@@ -645,16 +937,24 @@ export default function AskDevtoolsPanel() {
     const chatMessages: any[] = [
       { role: 'system', content: sysPrompt }
     ];
-    for (const m of messages) {
+    let historyBudget = 8000;
+    const recent = [...messages].reverse().filter(m => m.role !== 'error').slice(0, 12).reverse();
+    for (const m of recent) {
       if (m.role === 'error') continue;
       if (m.role === 'assistant') {
-        const c = m.content || (m.thinking ? `[Thinking process: ${m.thinking}]` : '');
-        if (c) chatMessages.push({ role: 'assistant', content: c });
+        const c = (m.content || (m.thinking ? `[Thinking process: ${m.thinking}]` : '')).slice(-historyBudget);
+        if (c) { chatMessages.push({ role: 'assistant', content: c }); historyBudget -= c.length; }
       } else {
-        chatMessages.push({ role: m.role, content: m.content });
+        const c = m.content.slice(-historyBudget);
+        if (c) { chatMessages.push({ role: m.role, content: c }); historyBudget -= c.length; }
       }
+      if (historyBudget <= 0) break;
     }
-    chatMessages.push({ role: 'user', content: text });
+    chatMessages.push({
+      role: 'user',
+      content: text,
+      ...(config.screenshots && capturedData?.screenshot && providerType !== 'chrome_ai' ? { imageDataUrl: capturedData.screenshot } : {}),
+    });
 
     setMessages(prev => [
       ...prev.filter(m => m.role !== 'error'),
@@ -739,7 +1039,8 @@ export default function AskDevtoolsPanel() {
     try {
       let html = marked.parse(content) as string;
       html = html.replace(/<pre><code([^>]*)>/g, (_match, attrs) => `<div class="askpage-code-wrapper"><button class="askpage-copy-btn" onclick="(function(btn){var code=btn.parentElement.querySelector('code');navigator.clipboard.writeText(code.innerText).then(function(){btn.textContent='Copied!';setTimeout(function(){btn.textContent='Copy'},1500)});})(this)">Copy</button><pre><code${attrs}>`);
-      return html.replace(/<\/code><\/pre>/g, '</code></pre></div>');
+      html = html.replace(/<\/code><\/pre>/g, '</code></pre></div>');
+      return sanitizeMarkdownHtml(html);
     } catch { return content; }
   };
 
@@ -780,7 +1081,7 @@ export default function AskDevtoolsPanel() {
         sidebarCollapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed(c => !c)}
         config={config}
-        onChangeConfig={setConfig}
+        onChangeConfig={updateConfig}
         onInjectLogger={injectLogger}
         isCapturing={isCapturing}
         onCapture={captureDevToolsData}
@@ -788,15 +1089,15 @@ export default function AskDevtoolsPanel() {
         onCopyContext={copyContext}
         captureStatus={captureStatus}
         includeDom={includeDom}
-        onToggleIncludeDom={setIncludeDom}
+        onToggleIncludeDom={value => { setIncludeDom(value); setSavedCaptureContext(''); }}
         includePerf={includePerf}
-        onToggleIncludePerf={setIncludePerf}
+        onToggleIncludePerf={value => { setIncludePerf(value); setSavedCaptureContext(''); }}
         selectedLogIds={selectedLogIds}
-        onToggleLogId={toggleLogId}
+        onToggleLogId={id => { toggleLogId(id); setSavedCaptureContext(''); }}
         selectedNetworkIds={selectedNetworkIds}
-        onToggleNetworkId={toggleNetworkId}
-        onSelectAllNetwork={() => setSelectedNetworkIds(new Set(capturedData?.network?.map(n => n.id) || []))}
-        onDeselectAllNetwork={() => setSelectedNetworkIds(new Set())}
+        onToggleNetworkId={id => { toggleNetworkId(id); setSavedCaptureContext(''); }}
+        onSelectAllNetwork={() => { setSelectedNetworkIds(new Set(capturedData?.network?.map(n => n.id) || [])); setSavedCaptureContext(''); }}
+        onDeselectAllNetwork={() => { setSelectedNetworkIds(new Set()); setSavedCaptureContext(''); }}
         networkFilter={networkFilter}
         onChangeNetworkFilter={setNetworkFilter}
       />

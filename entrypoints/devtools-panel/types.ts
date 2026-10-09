@@ -13,6 +13,17 @@ export interface DevToolsConfig {
   includeJs: boolean;
   cookieValues: boolean;
   allowLargeBodies: boolean;
+  webVitals: boolean;
+  storage: boolean;
+  storageValues: boolean;
+  cookies: boolean;
+  screenshots: boolean;
+  liveConsole: boolean;
+  pwa: boolean;
+  security: boolean;
+  eventListeners: boolean;
+  matchedStyles: boolean;
+  accessibilityTree: boolean;
 }
 
 export interface LogEntry {
@@ -34,11 +45,18 @@ export interface NetworkEntry {
 }
 
 export interface DevToolsData {
+  captureId?: string;
   logs?: LogEntry[];
   network?: NetworkEntry[];
   dom?: any;
   performance?: any;
   metadata?: any;
+  storage?: any;
+  cookies?: any[];
+  vitals?: any;
+  screenshot?: string;
+  pwa?: any;
+  security?: any;
 }
 
 /**

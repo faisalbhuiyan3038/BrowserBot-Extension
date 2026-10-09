@@ -262,6 +262,26 @@ export const DevtoolsSidebar: React.FC<DevtoolsSidebarProps> = ({
                 </label>
               </div>
             )}
+            <div style={{ borderTop: '1px solid var(--bd)', paddingTop: 8, marginTop: 4 }}>
+              <div style={S.sectionTitle()}>Additional Context</div>
+              {([
+                ['webVitals', 'Web Vitals / long tasks'],
+                ['storage', 'Storage inventory + quota'],
+                ['cookies', 'Cookie security metadata'],
+                ['screenshots', 'Attach screenshot (opt-in; Chrome uses debugger)'],
+                ['pwa', 'PWA / service worker state'],
+                ['security', 'Security signals'],
+                ['eventListeners', 'Selected element event listener counts (Chrome DevTools)'],
+                ['matchedStyles', 'Matched CSS rules (Chrome only)'],
+                ['accessibilityTree', 'Accessibility tree node (Chrome only)'],
+              ] as const).map(([key, label]) => <label key={key} style={S.label()}>
+                <input type="checkbox" checked={config[key]} disabled={['eventListeners', 'matchedStyles', 'accessibilityTree'].includes(key) && !browser.runtime.getURL('').startsWith('chrome-extension://')} onChange={e => onChangeConfig({ ...config, [key]: e.target.checked })} />{label}
+              </label>)}
+              {config.storage && <label style={S.label(true)}><input type="checkbox" checked={config.storageValues} onChange={e => onChangeConfig({ ...config, storageValues: e.target.checked })} />Include storage values (opt-in)</label>}
+              {config.cookies && <label style={S.label(true)}><input type="checkbox" checked={config.cookieValues} onChange={e => onChangeConfig({ ...config, cookieValues: e.target.checked })} />Include cookie values (opt-in)</label>}
+              <label style={S.label()}><input type="checkbox" checked={config.liveConsole} onChange={e => onChangeConfig({ ...config, liveConsole: e.target.checked })} />Live console (no reload)</label>
+              {config.liveConsole && <div style={{ fontSize: '11px', color: '#6b7280', lineHeight: '1.5' }}>Captures new console calls from the inspected page while enabled. It uses the DevTools inspection context and does not attach a second debugger.</div>}
+            </div>
           </div>
 
           {/* Action buttons */}
@@ -319,6 +339,10 @@ export const DevtoolsSidebar: React.FC<DevtoolsSidebarProps> = ({
           {/* Context payload selectors */}
           {capturedData && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {capturedData.screenshot && <div style={{ fontSize: '11px', color: 'var(--mute)' }}>
+                Screenshot {config.screenshots ? 'will be attached to supported providers' : 'captured but excluded from the prompt'}
+                <img src={capturedData.screenshot} alt="Captured inspected tab" style={{ display: 'block', width: '100%', maxHeight: 140, objectFit: 'contain', marginTop: 6, border: '1px solid var(--bd)', borderRadius: 8 }} />
+              </div>}
               <div
                 style={{
                   fontSize: '11px',
