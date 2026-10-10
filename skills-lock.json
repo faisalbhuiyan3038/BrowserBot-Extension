@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "chrome-extension": {
+      "source": "samber/cc-skills",
+      "sourceType": "github",
+      "skillPath": "skills/chrome-extension/SKILL.md",
+      "computedHash": "333e920b7bdf4162554a5cad24c7c96aab0b1722137b367e7351e3e0f8200691"
+    },
+    "firefox-extension": {
+      "source": "codeatcode/oss-ai-skills",
+      "sourceType": "github",
+      "skillPath": "extend/firefox-extension/SKILL.md",
+      "computedHash": "e023b6d5d5b792e4ada2b872e3659de508959a061c3619e53baa548cbae4c876"
+    }
+  }
+}
