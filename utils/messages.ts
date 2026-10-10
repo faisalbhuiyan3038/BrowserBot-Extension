@@ -40,7 +40,9 @@ export type RuntimeMessage =
   | { type: 'DOWNLOAD_CHROME_AI' }
   | { type: 'GET_DEVTOOLS_COOKIES'; url: string; includeValues: boolean }
   | { type: 'CAPTURE_DEVTOOLS_SCREENSHOT'; tabId: number }
-  | { type: 'GET_DEVTOOLS_ELEMENT_CDP'; tabId: number; selector: string; matchedStyles: boolean; accessibilityTree: boolean }
+  | { type: 'GET_DEVTOOLS_ELEMENT_CDP'; tabId: number; selector: string; matchedStyles: boolean; accessibilityTree: boolean; eventListeners?: boolean }
+  | { type: 'RELOAD_DEVTOOLS_TAB'; tabId?: number }
+  | { type: 'GET_DEVTOOLS_NETWORK_FALLBACK'; tabId?: number }
   | { type: 'GET_BOOKMARKS' }
   | { type: 'EXTRACT_PAGE_CONTENT'; algorithm?: ExtractionAlgorithm }
   | { type: 'CHAT_UPDATED'; messages: ChatMsg[] }

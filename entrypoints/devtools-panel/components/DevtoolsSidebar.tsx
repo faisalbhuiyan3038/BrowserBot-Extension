@@ -159,6 +159,9 @@ export const DevtoolsSidebar: React.FC<DevtoolsSidebarProps> = ({
               />
               Network (HAR)
             </label>
+            <div style={{ fontSize: '11px', color: '#6b7280', lineHeight: '1.5' }}>
+              If no requests appear, open the browser Network panel once and reload, then capture again.
+            </div>
             <label style={S.label()}>
               <input
                 type="checkbox"
@@ -271,7 +274,7 @@ export const DevtoolsSidebar: React.FC<DevtoolsSidebarProps> = ({
                 ['screenshots', 'Attach screenshot (opt-in; Chrome uses debugger)'],
                 ['pwa', 'PWA / service worker state'],
                 ['security', 'Security signals'],
-                ['eventListeners', 'Selected element event listener counts (Chrome DevTools)'],
+                ['eventListeners', 'Selected element event listener counts (via debugger; Chrome only)'],
                 ['matchedStyles', 'Matched CSS rules (Chrome only)'],
                 ['accessibilityTree', 'Accessibility tree node (Chrome only)'],
               ] as const).map(([key, label]) => <label key={key} style={S.label()}>
@@ -378,6 +381,11 @@ export const DevtoolsSidebar: React.FC<DevtoolsSidebarProps> = ({
                   />
                   Performance Metrics
                 </label>
+              )}
+              {capturedData?.performance?.browserNote && (
+                <div style={{ fontSize: '11px', color: 'var(--mute)', lineHeight: '1.5' }}>
+                  Note: {capturedData.performance.browserNote}
+                </div>
               )}
 
               {capturedData.logs && capturedData.logs.length > 0 && (

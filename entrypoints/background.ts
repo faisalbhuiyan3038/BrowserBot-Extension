@@ -91,6 +91,57 @@ export default defineBackground(() => {
     });
   }
 
+  // ─── DevTools network fallback (webRequest snapshot per tab) ──
+  // Covers the Firefox caveat where `devtools.network.onRequestFinished`
+  // only fires after the user opens the Network panel, and any case where
+  // `devtools.network.getHAR()` returns an empty log. Observation-only;
+  // no request modification happens here.
+  const fallbackNetworkByTab = new Map<number, Array<{
+    method: string; url: string; status: number; duration: number;
+    mimeType?: string; size?: number; initiator: string; ts: number;
+  }>>();
+  function trackFallbackRequest(details: any, failed: boolean) {
+    try {
+      const tabId = Number(details?.tabId);
+      if (!Number.isInteger(tabId) || tabId < 0) return;
+      const headers: any[] = Array.isArray(details?.responseHeaders) ? details.responseHeaders : [];
+      const contentType = headers.find(h => String(h?.name || '').toLowerCase() === 'content-type')?.value;
+      const lengthHeader = headers.find(h => String(h?.name || '').toLowerCase() === 'content-length')?.value;
+      const arr = fallbackNetworkByTab.get(tabId) || [];
+      arr.push({
+        method: String(details?.method || 'GET'),
+        url: String(details?.url || ''),
+        status: failed ? 0 : Number(details?.statusCode || 0),
+        duration: 0, // webRequest observation has no duration; HAR remains authoritative when present
+        mimeType: contentType ? String(contentType).split(';')[0].trim() : undefined,
+        size: lengthHeader ? Number(String(lengthHeader)) || undefined : undefined,
+        initiator: failed ? 'webrequest-fallback (failed)' : 'webrequest-fallback',
+        ts: Number(details?.timeStamp || Date.now()),
+      });
+      while (arr.length > 100) arr.shift();
+      fallbackNetworkByTab.set(tabId, arr);
+    } catch (_) {}
+  }
+  try {
+    if (browser.webRequest?.onCompleted) {
+      const onCompleted = (details: any) => trackFallbackRequest(details, false);
+      try {
+        browser.webRequest.onCompleted.addListener(onCompleted, { urls: ['<all_urls>'] }, ['responseHeaders']);
+      } catch (_) {
+        browser.webRequest.onCompleted.addListener(onCompleted, { urls: ['<all_urls>'] });
+      }
+    }
+    if (browser.webRequest?.onErrorOccurred) {
+      browser.webRequest.onErrorOccurred.addListener((details: any) => trackFallbackRequest(details, true), { urls: ['<all_urls>'] });
+    }
+  } catch (_) {}
+  // Drop snapshots for closed tabs so the map cannot grow unbounded.
+  try {
+    if (browser.tabs?.onRemoved) {
+      browser.tabs.onRemoved.addListener((tabId: number) => { fallbackNetworkByTab.delete(tabId); });
+    }
+  } catch (_) {}
+
   // ─── Keyboard command handler ───────────────────────
   // Guard: browser.commands is not available on Firefox Android
   if (browser.commands?.onCommand) {
@@ -246,6 +297,38 @@ export default defineBackground(() => {
       return true;
     }
 
+    if (message.type === 'RELOAD_DEVTOOLS_TAB') {
+      if (!sender.url?.startsWith(browser.runtime.getURL(''))) {
+        sendResponse({ error: 'Only extension pages can reload the inspected tab.' });
+        return false;
+      }
+      const tabId = Number((message as any).tabId);
+      const reloadTarget = Number.isInteger(tabId) && tabId >= 0 ? tabId : undefined;
+      (async () => {
+        if (reloadTarget === undefined) {
+          const [active] = await browser.tabs.query({ active: true, currentWindow: true });
+          if (!active?.id) throw new Error('No inspected tab to reload');
+          await browser.tabs.reload(active.id);
+        } else {
+          await browser.tabs.reload(reloadTarget);
+        }
+      })().then(() => sendResponse({ ok: true })).catch(err => sendResponse({ error: err?.message || 'Reload failed' }));
+      return true;
+    }
+
+    if (message.type === 'GET_DEVTOOLS_NETWORK_FALLBACK') {
+      if (!sender.url?.startsWith(browser.runtime.getURL(''))) {
+        sendResponse([]);
+        return false;
+      }
+      const tabId = Number((message as any).tabId);
+      const entries = (Number.isInteger(tabId) && tabId >= 0)
+        ? (fallbackNetworkByTab.get(tabId) || [])
+        : [];
+      sendResponse(entries.slice(-100));
+      return false;
+    }
+
     // ─── Removed legacy DevTools Chat handling ──────────────────────────
 
     // ─── Bookmarks ──────────────────────────────────────────────
@@ -314,6 +397,28 @@ export default defineBackground(() => {
           ignored: n.ignored,
           properties: (n.properties || []).filter((p: any) => ['focusable','focused','disabled','checked','expanded','selected','level','required'].includes(p.name)).map((p: any) => ({ name: p.name, value: p.value?.value })),
         }));
+      }
+      if (message.eventListeners) {
+        // `getEventListeners()` only exists in the DevTools console, never in
+        // inspected-page context (F-04). Resolve via CDP instead.
+        try {
+          await debuggerApi.sendCommand(target, 'DOMDebugger.enable');
+          const resolved = await debuggerApi.sendCommand(target, 'DOM.resolveNode', { nodeId });
+          const objectId = resolved?.object?.objectId;
+          if (!objectId) {
+            result.listenersNote = 'Could not resolve the selected element for listener inspection.';
+          } else {
+            const found = await debuggerApi.sendCommand(target, 'DOMDebugger.getEventListeners', { objectId });
+            const counts: Record<string, number> = {};
+            for (const item of (found?.listeners || [])) {
+              const type = String(item?.type || 'unknown');
+              counts[type] = (counts[type] || 0) + 1;
+            }
+            result.listeners = counts;
+          }
+        } catch (e: any) {
+          result.listenersNote = e?.message || 'Event listener inspection failed.';
+        }
       }
       return result;
     } finally {
